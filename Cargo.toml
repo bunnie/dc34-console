@@ -1,0 +1,108 @@
+[package]
+name = "phoenix"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+utralib = { version = "0.1.27", optional = true, default-features = false }
+xous-names = { package = "xous-api-names", version = "0.9.71" }
+ticktimer = { package = "xous-api-ticktimer", version = "0.9.70" }
+xous = "0.9.70"
+log-server = { package = "xous-api-log", version = "0.1.69" }
+log = "0.4.14"
+num-derive = { version = "0.4.2", default-features = false }
+num-traits = { version = "0.2.14", default-features = false }
+bao1x-hal = { features = [
+    "std",
+], optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+bao1x-api = { git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+bao1x-hal-service = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+bao1x-emu = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+usb-bao1x = { git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+modals = { default-features = false, optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+ux-api = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+pddb = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+xous-swapper = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+bytemuck = "1.24.0"
+susres = { package = "xous-api-susres", git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+keystore = { git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+
+bio-lib = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+arbitrary-int = "1.2"
+
+# pddb testing
+rand = { version = "0.8.5", features = ["getrandom"], optional = true }
+rand_chacha = { version = "0.3.1", optional = true }
+rand_core = "0.6.4"
+
+aes = { default-features = false, optional = true, features = [
+    "chaffing",
+], git = "https://github.com/betrusted-io/xous-core", rev = "6f71359d18f457855562e712d48034595de7c342" }
+
+# time testing
+chrono = "0.4.33"
+
+# QR code encoding
+base45 = "3.1.0"
+
+# hid bringup
+xous-usb-hid = { git = "https://github.com/betrusted-io/xous-usb-hid.git", branch = "main", optional = true }
+
+getrandom = "=0.2.12"
+
+[patch.crates-io.getrandom]
+git = "https://github.com/betrusted-io/xous-core"
+rev = "6f71359d18f457855562e712d48034595de7c342"
+
+# [patch."https://github.com/betrusted-io/xous-core"]
+# modals = { path = "../xous-core/services/modals" }
+# ux-api = { path = "../xous-core/libs/ux-api" }
+
+# aes testing
+[features]
+bao1x = ["utralib/bao1x", "usb-bao1x/bao1x", "aes/bao1x"]
+board-baosec = [
+    "modals/board-baosec",
+    "bao1x-hal-service",
+    "bao1x-hal",
+    "usb-bao1x/board-baosec",
+    "pddb/board-baosec",
+    "xous-swapper",
+    "ux-api/board-baosec",
+    "bio-lib",
+]
+oem-baosec-lite = ["bao1x-hal/sensor-lis2dh12"]
+hosted-baosec = [
+    "modals/hosted-baosec",
+    "usb-bao1x/hosted-baosec",
+    "bao1x-emu",
+    "pddb/hosted-baosec",
+    "bao1x-hal/hosted-baosec",
+]
+# Don't use this for dabao. Use apps-dabao/dabao-console instead!
+# board-dabao = [
+#     "bao1x-hal-service",
+#     "bao1x-hal/board-dabao",
+#     "usb-bao1x/board-dabao",
+# ]
+bmp180 = ["bao1x-hal/bmp180", "bao1x-hal-service"]
+usb = []
+aestests = ["aes"]
+battery-readout = []
+with-pddb = []
+pddbtest = ["with-pddb"]
+test-rekey = []
+autobasis = ["rand_chacha", "rand"]
+modal-testing = ["ux-api", "modals/modal-testing"]
+test-scrollbars = []
+test-flash = []
+ctap-bringup = ["xous-usb-hid"]
+# this is mutually exclusive with the keystore, as keystore owns rram
+rramtests = []
+
+# Activating this makes this crate *try* to grab the DUART. To improve its odds
+# of winning the race, shift its position to first in the list in the PIDs to be
+# loaded and run.
+duart-debug-hal = ["bao1x-hal/debug-print-duart"]
+
+default = ["with-pddb"]
