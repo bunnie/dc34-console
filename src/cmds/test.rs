@@ -17,10 +17,6 @@ impl<'a> ShellCmdApi<'a> for Test {
         #[allow(unused_variables)]
         let helpstring = "test [proc] [freemem] [interrupts] [bootwait]; see code for other test commands.";
 
-        #[cfg(feature = "bmp180")]
-        let helpstring = "Usage:
-        temp     - reads temperature from bmp180.";
-
         let mut parts = args.split_whitespace();
         let cmd = parts.next().unwrap_or("").to_string();
         let args: Vec<String> = parts.map(|s| s.to_string()).collect();
@@ -49,18 +45,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                     write!(ret, "bootwait [check | enable | disable]").ok();
                 }
             }
-            "timer" => {
-                let start = _env.ticktimer.elapsed_ms();
-                log::info!("Starting test");
-                let mut seconds = 0;
-                loop {
-                    let elapsed = _env.ticktimer.elapsed_ms() - start;
-                    if elapsed > seconds * 1000 {
-                        log::info!("{} s", seconds);
-                        seconds += 1;
-                    }
-                }
-            }
             "time" => {
                 use chrono::{Local, Utc};
                 let systime = std::time::SystemTime::now();
@@ -84,27 +68,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                 let local_now = Local::now();
                 log::info!("Local time: {}", local_now.format("%Y-%m-%d %H:%M:%S %Z"));
             }
-            #[cfg(feature = "bmp180")]
-            "temp" => {
-                use bao1x_hal::bmp180::Bmp180;
-                use bao1x_hal::i2c::I2c;
-                let mut i2c = I2c::new();
-
-                match Bmp180::new(&mut i2c) {
-                    Ok(sensor) => match sensor.read_temperature(&mut i2c) {
-                        Ok(temp) => {
-                            write!(ret, "BMP180 Temperature: {:.1}°C", temp).unwrap();
-                        }
-                        Err(e) => {
-                            write!(ret, "Failed to read temperature: {:?}", e).unwrap();
-                        }
-                    },
-                    Err(e) => {
-                        write!(ret, "Failed to initialize BMP180 sensor: {:?}", e).unwrap();
-                    }
-                }
-            }
-            #[cfg(not(feature = "hosted-baosec"))]
             "shipmode" => {
                 use bao1x_hal::i2c::I2c;
                 let mut i2c = I2c::new();
@@ -119,7 +82,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                 axp2101.powerdown(&mut i2c).ok();
                 log::info!("sent shutdown to axp2101");
             }
-            #[cfg(not(feature = "hosted-baosec"))]
             "deepsleep" => {
                 let gfx = ux_api::service::gfx::Gfx::new(&_env.xns).unwrap();
                 log::info!("turn off display");
@@ -151,11 +113,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                     _ => panic!("Couldn't send deep sleep message to susres"),
                 }
             }
-            "seed" => {
-                let (_, value) = std::env::vars().find(|(key, _value)| key == "SEED").unwrap();
-                log::info!("Seed: {:?}", value);
-            }
-            #[cfg(not(feature = "hosted-baosec"))]
             "wfi" => {
                 let gfx = ux_api::service::gfx::Gfx::new(&_env.xns).unwrap();
                 log::info!("turn off display");
@@ -205,7 +162,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                     log::info!("{}", line);
                 }
             }
-            #[cfg(feature = "board-baosec")]
             "qrshow" => {
                 // note that 40 bytes gives 320 bits which fits nicely into a version 3 code,
                 // which allows 4 pixels per module rendering.
@@ -226,7 +182,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                 let encoded = base45::encode(&test_data);
                 modals.show_notification("", Some(&encoded)).ok();
             }
-            #[cfg(feature = "board-baosec")]
             "qrget" => {
                 let gfx = ux_api::service::gfx::Gfx::new(&_env.xns).unwrap();
                 match gfx.acquire_qr() {
@@ -250,7 +205,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                     }
                 }
             }
-            #[cfg(not(feature = "hosted-baosec"))]
             "cam" => {
                 use bao1x_api::I2cApi;
                 let mut i2c = bao1x_hal::i2c::I2c::new();
@@ -269,7 +223,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     write!(ret, "Wrote {:x} into {:x}", data, adr).ok();
                 }
             }
-            #[cfg(all(not(feature = "hosted-baosec"), feature = "oem-baosec-lite"))]
+            #[cfg(feature = "oem-baosec-lite")]
             "accel" => {
                 use std::time::{Duration, Instant};
 
@@ -278,7 +232,7 @@ impl<'a> ShellCmdApi<'a> for Test {
 
                 let mut i2c = I2c::new();
                 // Initialize
-                let mut accel = Lis2dh12::new(&mut i2c).unwrap();
+                let accel = Lis2dh12::new(&mut i2c).unwrap();
 
                 // Check orientation
                 let duration = Duration::from_secs(2);
@@ -326,20 +280,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                     }*/
                 }
             }
-            /* // leave this around in case we have more swap bugs to debug
-            // needs to have `swaptest1`` & `swaptest2` added to the image for this to work.
-            "swap" => {
-                log::info!("starting swap test");
-                let swaptest1 = _env.xns.request_connection("swaptest1").unwrap();
-                let swaptest2 = _env.xns.request_connection("swaptest2").unwrap();
-                for i in 1..4 {
-                    log::info!("iter {}", i);
-                    xous::send_message(swaptest1, xous::Message::new_scalar(0, i, 0, 0, 0)).unwrap();
-                    xous::send_message(swaptest2, xous::Message::new_scalar(0, i + 1, 0, 0, 0)).unwrap();
-                }
-                log::info!("swaptest done");
-            }
-            */
             _ => {
                 write!(ret, "{}", helpstring).unwrap();
             }

@@ -99,7 +99,6 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 [[package]]
 name = "bao1x-api"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "arbitrary-int",
  "bitbybit",
@@ -110,6 +109,27 @@ dependencies = [
  "rkyv",
  "xous",
  "xous-api-names",
+ "xous-ipc",
+]
+
+[[package]]
+name = "bao1x-emu"
+version = "0.1.0"
+dependencies = [
+ "bao1x-api",
+ "log",
+ "minifb",
+ "num-derive",
+ "num-traits",
+ "rand",
+ "rand_chacha",
+ "rand_core",
+ "rkyv",
+ "ux-api",
+ "xous",
+ "xous-api-log",
+ "xous-api-names",
+ "xous-api-susres 0.9.68",
  "xous-ipc",
 ]
 
@@ -131,14 +151,13 @@ dependencies = [
  "xous",
  "xous-api-log",
  "xous-api-names",
- "xous-api-susres",
+ "xous-api-susres 0.9.68 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "xous-ipc",
 ]
 
 [[package]]
 name = "bao1x-hal"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "arbitrary-int",
  "bao1x-api",
@@ -169,7 +188,6 @@ dependencies = [
 [[package]]
 name = "bao1x-hal-service"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "arbitrary-int",
  "bao1x-api",
@@ -178,8 +196,8 @@ dependencies = [
  "bitbybit",
  "bitfield",
  "bytemuck",
- "flatipc",
- "flatipc-derive",
+ "flatipc 0.1.0",
+ "flatipc-derive 0.1.2",
  "log",
  "num-derive",
  "num-traits",
@@ -191,7 +209,37 @@ dependencies = [
  "xous",
  "xous-api-log",
  "xous-api-names",
- "xous-api-susres",
+ "xous-api-susres 0.9.68",
+ "xous-api-ticktimer",
+ "xous-ipc",
+]
+
+[[package]]
+name = "bao1x-hal-service"
+version = "0.1.0"
+source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
+dependencies = [
+ "arbitrary-int",
+ "bao1x-api",
+ "bao1x-hal",
+ "bio-lib",
+ "bitbybit",
+ "bitfield",
+ "bytemuck",
+ "flatipc 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
+ "flatipc-derive 0.1.2 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
+ "log",
+ "num-derive",
+ "num-traits",
+ "rand",
+ "rand_chacha",
+ "rand_core",
+ "rkyv",
+ "utralib",
+ "xous",
+ "xous-api-log",
+ "xous-api-names",
+ "xous-api-susres 0.9.68 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "xous-api-ticktimer",
  "xous-ipc",
 ]
@@ -223,7 +271,6 @@ dependencies = [
 [[package]]
 name = "bio-lib"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "arbitrary-int",
  "bao1x-api",
@@ -286,7 +333,6 @@ dependencies = [
 [[package]]
 name = "blitstr2"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "log",
  "num-derive",
@@ -461,7 +507,6 @@ dependencies = [
 [[package]]
 name = "curve25519-dalek-bao1x"
 version = "4.2.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "cfg-if",
  "cpufeatures",
@@ -531,7 +576,6 @@ dependencies = [
 [[package]]
 name = "ed25519-dalek-bao1x"
 version = "2.2.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "curve25519-dalek-bao1x",
  "ed25519",
@@ -612,10 +656,27 @@ checksum = "8591b0bcc8a98a64310a2fae1bb3e9b8564dd10e381e6e28010fde8e8e8568db"
 [[package]]
 name = "flatipc"
 version = "0.1.0"
+dependencies = [
+ "flatipc-derive 0.1.2",
+ "xous",
+]
+
+[[package]]
+name = "flatipc"
+version = "0.1.0"
 source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
- "flatipc-derive",
+ "flatipc-derive 0.1.2 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "xous",
+]
+
+[[package]]
+name = "flatipc-derive"
+version = "0.1.2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
 ]
 
 [[package]]
@@ -796,7 +857,7 @@ version = "0.2.12"
 source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "cfg-if",
- "flatipc",
+ "flatipc 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "libc",
  "rkyv",
  "wasi",
@@ -954,7 +1015,7 @@ dependencies = [
  "aes-kw",
  "bao1x-api",
  "bao1x-hal",
- "bao1x-hal-service",
+ "bao1x-hal-service 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "blowfish",
  "byteorder",
  "cipher",
@@ -962,7 +1023,7 @@ dependencies = [
  "hex",
  "hkdf",
  "keystore-api",
- "locales",
+ "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "log",
  "num-derive",
  "num-traits",
@@ -986,7 +1047,7 @@ version = "0.1.0"
 source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "cipher",
- "locales",
+ "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "num-derive",
  "num-traits",
  "precursor-hal",
@@ -1068,6 +1129,18 @@ dependencies = [
 [[package]]
 name = "locales"
 version = "0.1.0"
+dependencies = [
+ "glob",
+ "lazy_static",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "serde_json",
+]
+
+[[package]]
+name = "locales"
+version = "0.1.0"
 source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "glob",
@@ -1137,14 +1210,13 @@ dependencies = [
 [[package]]
 name = "modals"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "bao1x-api",
- "bao1x-emu",
- "bao1x-hal-service",
+ "bao1x-emu 0.1.0",
+ "bao1x-hal-service 0.1.0",
  "bit_field",
  "blitstr2",
- "locales",
+ "locales 0.1.0",
  "log",
  "num-derive",
  "num-traits",
@@ -1327,9 +1399,9 @@ source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562
 dependencies = [
  "aes 0.8.4 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "aes-gcm-siv",
- "bao1x-emu",
+ "bao1x-emu 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "bao1x-hal",
- "bao1x-hal-service",
+ "bao1x-hal-service 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "bitfield",
  "bitflags 1.3.2",
  "blowfish",
@@ -1339,7 +1411,7 @@ dependencies = [
  "hkdf",
  "keystore",
  "keystore-api",
- "locales",
+ "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "log",
  "modals",
  "num-derive",
@@ -1368,9 +1440,9 @@ dependencies = [
  "aes 0.8.4 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "arbitrary-int",
  "bao1x-api",
- "bao1x-emu",
+ "bao1x-emu 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "bao1x-hal",
- "bao1x-hal-service",
+ "bao1x-hal-service 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "base45",
  "bio-lib",
  "bytemuck",
@@ -1391,7 +1463,7 @@ dependencies = [
  "xous",
  "xous-api-log",
  "xous-api-names",
- "xous-api-susres",
+ "xous-api-susres 0.9.68 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "xous-api-ticktimer",
  "xous-swapper",
  "xous-usb-hid",
@@ -1807,7 +1879,6 @@ dependencies = [
 [[package]]
 name = "sha2-bao1x"
 version = "0.10.9"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "bao1x-api",
  "digest 0.10.7",
@@ -1964,11 +2035,11 @@ version = "0.1.0"
 source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "bao1x-api",
- "bao1x-emu",
+ "bao1x-emu 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "bao1x-hal",
- "bao1x-hal-service",
+ "bao1x-hal-service 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "frunk_core",
- "locales",
+ "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342)",
  "log",
  "num-derive",
  "num-traits",
@@ -2032,14 +2103,13 @@ dependencies = [
 [[package]]
 name = "ux-api"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=6f71359d18f457855562e712d48034595de7c342#6f71359d18f457855562e712d48034595de7c342"
 dependencies = [
  "base64",
  "blitstr2",
  "digest 0.9.0",
  "enum_dispatch",
  "hex",
- "locales",
+ "locales 0.1.0",
  "log",
  "num-derive",
  "num-traits",
@@ -2389,6 +2459,21 @@ dependencies = [
  "rkyv",
  "xous",
  "xous-api-log",
+ "xous-ipc",
+]
+
+[[package]]
+name = "xous-api-susres"
+version = "0.9.68"
+dependencies = [
+ "log",
+ "num-derive",
+ "num-traits",
+ "rkyv",
+ "utralib",
+ "xous",
+ "xous-api-log",
+ "xous-api-names",
  "xous-ipc",
 ]
 

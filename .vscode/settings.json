@@ -1,7 +1,8 @@
 {
     "rust-analyzer.cargo.features": [
         "bao1x",
-        "board-dabao",
+        "board-baosec",
+        "oem-baosec-lite",
     ],
     "rust-analyzer.rustfmt.extraArgs": [
         "+nightly"

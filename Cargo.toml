@@ -54,9 +54,12 @@ getrandom = "=0.2.12"
 git = "https://github.com/betrusted-io/xous-core"
 rev = "6f71359d18f457855562e712d48034595de7c342"
 
-# [patch."https://github.com/betrusted-io/xous-core"]
-# modals = { path = "../xous-core/services/modals" }
-# ux-api = { path = "../xous-core/libs/ux-api" }
+[patch."https://github.com/betrusted-io/xous-core"]
+bao1x-hal = { path = "../xous-core/libs/bao1x-hal" }
+bao1x-api = { path = "../xous-core/libs/bao1x-api" }
+modals = { path = "../xous-core/services/modals" }
+ux-api = { path = "../xous-core/libs/ux-api" }
+bio-lib = { path = "../xous-core/libs/bio-lib" }
 
 # aes testing
 [features]
@@ -70,6 +73,7 @@ board-baosec = [
     "xous-swapper",
     "ux-api/board-baosec",
     "bio-lib",
+    "bao1x-hal/board-baosec",
 ]
 oem-baosec-lite = ["bao1x-hal/sensor-lis2dh12"]
 hosted-baosec = [
@@ -79,30 +83,10 @@ hosted-baosec = [
     "pddb/hosted-baosec",
     "bao1x-hal/hosted-baosec",
 ]
-# Don't use this for dabao. Use apps-dabao/dabao-console instead!
-# board-dabao = [
-#     "bao1x-hal-service",
-#     "bao1x-hal/board-dabao",
-#     "usb-bao1x/board-dabao",
-# ]
-bmp180 = ["bao1x-hal/bmp180", "bao1x-hal-service"]
-usb = []
-aestests = ["aes"]
-battery-readout = []
-with-pddb = []
-pddbtest = ["with-pddb"]
-test-rekey = []
-autobasis = ["rand_chacha", "rand"]
-modal-testing = ["ux-api", "modals/modal-testing"]
-test-scrollbars = []
-test-flash = []
-ctap-bringup = ["xous-usb-hid"]
-# this is mutually exclusive with the keystore, as keystore owns rram
-rramtests = []
 
 # Activating this makes this crate *try* to grab the DUART. To improve its odds
 # of winning the race, shift its position to first in the list in the PIDs to be
 # loaded and run.
 duart-debug-hal = ["bao1x-hal/debug-print-duart"]
 
-default = ["with-pddb"]
+default = ["oem-baosec-lite"]

@@ -2,9 +2,6 @@ use core::fmt::Write;
 use std::collections::HashMap;
 
 use String;
-#[cfg(feature = "hosted-baosec")]
-use bao1x_emu::trng;
-#[cfg(feature = "bao1x")]
 use bao1x_hal_service::trng;
 use xous::MessageEnvelope;
 
@@ -81,44 +78,14 @@ mod ver;
 use ver::*;
 mod test;
 use test::*;
-mod trng_cmd;
-use trng_cmd::*;
-#[cfg(feature = "usb")]
 mod usb;
-#[cfg(feature = "usb")]
 use usb::*;
-#[cfg(feature = "with-pddb")]
-mod pddb;
-#[cfg(feature = "with-pddb")]
-use pddb::*;
-#[cfg(feature = "aestests")]
-mod aes_cmd;
-#[cfg(feature = "aestests")]
-use aes_cmd::*;
-#[cfg(not(feature = "hosted-baosec"))]
-mod i2cdetect;
-#[cfg(not(feature = "hosted-baosec"))]
-use i2cdetect::*;
-mod cute;
-use cute::*;
-#[cfg(feature = "rramtests")]
-mod rram;
-#[cfg(feature = "rramtests")]
-use rram::*;
 
 pub struct CmdEnv {
     common_env: CommonEnv,
     lastverb: String,
     ///// 2. declare storage for your command here.
-    trng_cmd: TrngCmd,
-    #[cfg(feature = "usb")]
     usb: Usb,
-    #[cfg(feature = "with-pddb")]
-    pddb_cmd: PddbCmd,
-    #[cfg(feature = "aestests")]
-    aes_cmd: Aes,
-    #[cfg(feature = "rramtests")]
-    rram: Rram,
 }
 impl CmdEnv {
     pub fn new(xns: &xous_names::XousNames) -> CmdEnv {
@@ -131,26 +98,11 @@ impl CmdEnv {
             trng: trng::Trng::new(&xns).unwrap(),
             xns: xous_names::XousNames::new().unwrap(),
         };
-        #[cfg(feature = "aestests")]
-        let aes_cmd = Aes::new(&xns, &mut _common);
-        #[cfg(feature = "rramtests")]
-        let rram = Rram::new(&xns, &mut _common);
         CmdEnv {
             common_env: _common,
             lastverb: String::new(),
             ///// 3. initialize your storage, by calling new()
-            trng_cmd: {
-                log::debug!("trng");
-                TrngCmd::new()
-            },
-            #[cfg(feature = "usb")]
             usb: Usb::new(),
-            #[cfg(feature = "with-pddb")]
-            pddb_cmd: PddbCmd::new(),
-            #[cfg(feature = "aestests")]
-            aes_cmd,
-            #[cfg(feature = "rramtests")]
-            rram,
         }
     }
 
@@ -164,27 +116,13 @@ impl CmdEnv {
         let mut echo_cmd = Echo {}; // this command has no persistent storage, so we can "create" it every time we call dispatch (but it's a zero-cost absraction so this doesn't actually create any instructions)
         let mut ver_cmd = Ver {};
         let mut console_cmd = Test {};
-        #[cfg(not(feature = "hosted-baosec"))]
-        let mut i2cdetect_cmd = I2cDetect {};
-        let mut cute_cmd = Cute {};
 
         let commands: &mut [&mut dyn ShellCmdApi] = &mut [
             ///// 4. add your command to this array, so that it can be looked up and dispatched
             &mut echo_cmd,
             &mut ver_cmd,
-            &mut self.trng_cmd,
-            #[cfg(not(feature = "hosted-baosec"))]
-            &mut i2cdetect_cmd,
-            &mut cute_cmd,
             &mut console_cmd,
-            #[cfg(feature = "usb")]
             &mut self.usb,
-            #[cfg(feature = "with-pddb")]
-            &mut self.pddb_cmd,
-            #[cfg(feature = "aestests")]
-            &mut self.aes_cmd,
-            #[cfg(feature = "rramtests")]
-            &mut self.rram,
         ];
 
         if let Some(cmdline) = maybe_cmdline {
