@@ -38,7 +38,7 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     // INT1_THS: threshold 16mg/LSB at ±2g
     accel.write_register(i2c, regs::INT1_THS, 10)?;
     // INT1_DURATION: 0 (no minimum duration)
-    accel.write_register(i2c, regs::INT1_DURATION, 0)?;
+    accel.write_register(i2c, regs::INT1_DURATION, 1)?;
     // CTRL_REG3: Enable IA1 on INT1 pin
     accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40)?;
 
@@ -109,7 +109,7 @@ pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
     });
 
     let mut test_state = true;
-    let mut display_on = true;
+    // let mut display_on = true;
 
     let mut last_action_time_ms = tt.elapsed_ms();
     let mut msg_opt = None;
@@ -131,17 +131,18 @@ pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
                     }
                     test_state = !test_state;
 
+                    /*
                     if display_on {
                         gfx.set_power(false).unwrap();
                         display_on = false;
                     }
-                    /*
+                    */
+
                     gfx.set_power(false).unwrap();
                     susres.initiate_suspend().unwrap();
                     // we idled, until a button was pressed
                     tt.sleep_ms(100).ok();
                     gfx.set_power(true).unwrap();
-                    */
                 }
             }
             PowerManagerOp::MotionIrq => {
@@ -149,10 +150,12 @@ pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
                     last_action_time_ms = tt.elapsed_ms();
                     let source = a.read_int1_source(&mut i2c).unwrap();
                     if source.active {
+                        /*
                         if !display_on {
                             gfx.set_power(true);
                             display_on = true;
                         }
+                        */
                         log::debug!(
                             "Motion confirmed! {:?} {:?}",
                             source,

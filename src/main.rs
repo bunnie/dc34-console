@@ -5,6 +5,7 @@ mod cmds;
 mod repl;
 mod shell;
 use cmds::*;
+mod fxcore;
 mod leds;
 mod power;
 
