@@ -74,6 +74,7 @@ board-baosec = [
     "ux-api/board-baosec",
     "bio-lib",
     "bao1x-hal/board-baosec",
+    "bio-lib/ws2812",
 ]
 oem-baosec-lite = ["bao1x-hal/sensor-lis2dh12"]
 hosted-baosec = [

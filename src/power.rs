@@ -7,6 +7,7 @@ use bao1x_hal::i2c::I2c;
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
 use num_traits::ToPrimitive;
 use utralib::generated::utra;
+use ux_api::widgets::en;
 /*
 pub fn start_power_management() {
     std::thread::spawn(move || {
@@ -22,6 +23,7 @@ pub const POWER_MANAGER_SERVER: &'static str = "_phx_pwr_mgr_";
 
 #[derive(Debug, Copy, Clone, num_derive::FromPrimitive, num_derive::ToPrimitive)]
 pub enum PowerManagerOp {
+    Enable,
     Poll,
     MotionIrq,
     KeyPress,
@@ -108,7 +110,7 @@ pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
         }
     });
 
-    let mut test_state = true;
+    let mut enabled = false;
     // let mut display_on = true;
 
     let mut last_action_time_ms = tt.elapsed_ms();
@@ -121,16 +123,23 @@ pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
         };
         log::debug!("{:?}", opcode);
         match opcode {
+            PowerManagerOp::Enable => {
+                if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    if scalar.arg1 != 0 {
+                        enabled = true;
+                    } else {
+                        enabled = false;
+                    }
+                }
+            }
             PowerManagerOp::Poll => {
                 let now_ms = tt.elapsed_ms();
+                if !enabled {
+                    // this effectively disables the if statement below by claiming
+                    // an action has *always* happened
+                    last_action_time_ms = now_ms;
+                }
                 if now_ms - last_action_time_ms > WFI_IDLE_SEC * 1000 {
-                    if test_state {
-                        led_value.store(13, Ordering::SeqCst);
-                    } else {
-                        led_value.store(0, Ordering::SeqCst);
-                    }
-                    test_state = !test_state;
-
                     /*
                     if display_on {
                         gfx.set_power(false).unwrap();

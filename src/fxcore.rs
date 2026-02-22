@@ -44,7 +44,7 @@ impl FxCore {
         // 20khz to simplify wait looping - 10.7khz is the lowest we can go with a 700MHz fclk
         let config = CoreConfig { clock_mode: bao1x_api::bio::ClockMode::TargetFreqInt(20_000) };
         log::debug!("grant: {:?}", resource_grant);
-        bio_ss.init_core(resource_grant.cores[0], &fx_core(), 0, config)?;
+        bio_ss.init_core(resource_grant.cores[0], fx_core(), config)?;
         bio_ss.set_core_run_state(&resource_grant, true);
 
         // safety: fifo3 is stored in the FxCore object so it isn't Drop'd before the object is
