@@ -1,12 +1,7 @@
-use std::{
-    panic::UnwindSafe,
-    sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
-    },
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, Ordering},
 };
-
-use bio_lib::ws2812::rgb_to_u32;
 
 pub fn start_leds(led_value: Arc<AtomicU8>) {
     std::thread::spawn(move || {
