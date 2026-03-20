@@ -1,8 +1,0 @@
-[build]
-target = "riscv32emc-unknown-none-elf.json"
-
-# [target.riscv32emc-unknown-none-elf]
-# rustflags = ["-C", "link-arg=-Tlink.x"]
-
-[unstable]
-build-std = ["core"]
