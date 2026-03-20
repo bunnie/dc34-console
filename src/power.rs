@@ -17,7 +17,7 @@ pub fn start_power_management() {
 */
 
 const POWER_POLL_INTERVAL_MS: usize = 2500;
-const WFI_IDLE_SEC: u64 = 10;
+const WFI_IDLE_SEC: u64 = 120;
 
 pub const POWER_MANAGER_SERVER: &'static str = "_phx_pwr_mgr_";
 
@@ -41,6 +41,8 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     accel.write_register(i2c, regs::INT1_THS, 10)?;
     // INT1_DURATION: 0 (no minimum duration)
     accel.write_register(i2c, regs::INT1_DURATION, 1)?;
+    // set polarity
+    accel.set_interrupt_polarity(i2c, bao1x_hal::lis2dh12::InterruptPolarity::ActiveHigh)?;
     // CTRL_REG3: Enable IA1 on INT1 pin
     accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40)?;
 
@@ -88,7 +90,7 @@ pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
         iox_hal.set_irq_pin(
             bao1x_api::IoxPort::PC,
             15,
-            bao1x_api::IoxValue::Low,
+            bao1x_api::IoxValue::High,
             POWER_MANAGER_SERVER,
             PowerManagerOp::MotionIrq.to_usize().unwrap(),
         );
@@ -165,11 +167,7 @@ pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
                             display_on = true;
                         }
                         */
-                        log::debug!(
-                            "Motion confirmed! {:?} {:?}",
-                            source,
-                            a.read_accel_mg(&mut i2c).unwrap()
-                        );
+                        log::info!("Motion confirmed! {:?} {:?}", source, a.read_accel_mg(&mut i2c).unwrap());
                         a.reset_highpass(&mut i2c).unwrap();
                     }
                 }

@@ -1,4 +1,5 @@
 use String;
+use bao1x_api::IoSetup;
 
 use crate::{CommonEnv, ShellCmdApi};
 
@@ -278,6 +279,55 @@ impl<'a> ShellCmdApi<'a> for Test {
                         let raw_data = accel.read_accel_mg(&mut i2c).unwrap();
                         log::info!("mg data: {:?}", raw_data);
                     }*/
+                }
+            }
+            "temp" => {
+                let adc = bao1x_hal_service::Adc::new();
+                let raw_temp = adc.read_raw(bao1x_hal::udma::AdcSource::Temperature, Some(8));
+                log::info!(
+                    "raw: {}, temp: {}",
+                    raw_temp,
+                    bao1x_hal::udma::Adc::raw_to_temp_celsius(raw_temp)
+                );
+            }
+            "adc" => {
+                let iox = bao1x_api::IoxHal::new();
+                let adc = bao1x_hal_service::Adc::new();
+
+                iox.setup_pin(
+                    bao1x_api::IoxPort::PA,
+                    4,
+                    Some(bao1x_api::IoxDir::Input),
+                    Some(bao1x_api::IoxFunction::Gpio),
+                    Some(bao1x_api::IoxEnable::Enable),
+                    Some(bao1x_api::IoxEnable::Disable),
+                    None,
+                    None,
+                );
+                // safety - we have manually checked there are no conflicts with this mapping
+                unsafe { adc.enable_channel(bao1x_hal::udma::AdcExtChannel::Adc3) };
+                // unsafe { adc.enable_channel(bao1x_hal::udma::AdcExtChannel::Adc3) };
+                loop {
+                    let vbat_raw = adc.read_raw(
+                        bao1x_hal::udma::AdcSource::Ext(bao1x_hal::udma::AdcExtChannel::Adc3),
+                        Some(8),
+                    );
+                    log::info!(
+                        "vbus: {:?}, vbat: {:.3}V",
+                        iox.get_gpio_pin_value(bao1x_api::IoxPort::PA, 4),
+                        bao1x_hal::udma::Adc::raw_to_voltage(vbat_raw) / 0.31884f32
+                    );
+                    /*
+                    let vbat_raw = adc.read_raw(
+                        bao1x_hal::udma::AdcSource::Ext(bao1x_hal::udma::AdcExtChannel::Adc3),
+                        Some(8),
+                    );
+                    log::info!(
+                        "vbat: {:.3}V",
+                        bao1x_hal::udma::Adc::raw_to_voltage(vbat_raw)
+                    );
+                    */
+                    std::thread::sleep(std::time::Duration::from_millis(500));
                 }
             }
             _ => {
