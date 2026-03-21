@@ -1,13 +1,10 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use bao1x_api::{IoIrq, IoxHal};
 use bao1x_hal::i2c::I2c;
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
 use num_traits::ToPrimitive;
-use utralib::generated::utra;
-use ux_api::widgets::en;
+
 /*
 pub fn start_power_management() {
     std::thread::spawn(move || {
@@ -64,7 +61,7 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     Ok(())
 }
 
-pub fn power_manager(led_value: Arc<AtomicU8>) -> ! {
+pub fn power_manager() -> ! {
     let xns = xous_names::XousNames::new().unwrap();
     let tt = ticktimer::Ticktimer::new().unwrap();
 

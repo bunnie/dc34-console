@@ -1,5 +1,7 @@
 use String;
 use bao1x_api::IoSetup;
+use num_derive::*;
+use num_traits::ToPrimitive;
 
 use crate::{CommonEnv, ShellCmdApi};
 
@@ -329,6 +331,23 @@ impl<'a> ShellCmdApi<'a> for Test {
                     */
                     std::thread::sleep(std::time::Duration::from_millis(500));
                 }
+            }
+            "autogamy" => {
+                log::info!("connecting...");
+                let conn = _env.xns.request_connection_blocking(crate::leds::LED_SERVER).unwrap();
+                log::info!("sending autogamy");
+                xous::send_message(
+                    conn,
+                    xous::Message::new_scalar(
+                        crate::leds::LedManagerOp::Autogamy.to_usize().unwrap(),
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                .ok();
+                log::info!("autogamy sent");
             }
             _ => {
                 write!(ret, "{}", helpstring).unwrap();

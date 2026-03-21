@@ -1,6 +1,3 @@
-use std::sync::Arc;
-use std::sync::atomic::AtomicU8;
-
 mod bio;
 mod cmds;
 mod repl;
@@ -43,9 +40,8 @@ fn main() {
     // safety - we have manually checked there are no conflicts with this mapping
     unsafe { adc.enable_channel(bao1x_hal::udma::AdcExtChannel::Adc3) };
 
-    let led_value: Arc<AtomicU8> = Arc::new(AtomicU8::new(13));
     tt.sleep_ms(500).ok();
-    leds::start_leds(led_value.clone());
+    leds::start_leds();
 
-    power::power_manager(led_value.clone());
+    power::power_manager();
 }

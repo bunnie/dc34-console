@@ -23,7 +23,7 @@ modals = { default-features = false, optional = true, git = "https://github.com/
 ux-api = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
 pddb = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
 xous-swapper = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-bytemuck = "1.24.0"
+bytemuck = { version = "1.24.0", features = ["derive"] }
 susres = { package = "xous-api-susres", git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
 keystore = { git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
 
@@ -31,8 +31,8 @@ bio-lib = { optional = true, git = "https://github.com/betrusted-io/xous-core", 
 arbitrary-int = "1.2"
 
 # pddb testing
-rand = { version = "0.8.5", features = ["getrandom"], optional = true }
-rand_chacha = { version = "0.3.1", optional = true }
+rand = { version = "0.8.5", features = ["getrandom"] }
+rand_chacha = { version = "0.3.1" }
 rand_core = "0.6.4"
 
 aes = { default-features = false, optional = true, features = [

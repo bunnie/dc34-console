@@ -222,7 +222,6 @@ static void do_lightgene(uint32_t actual_leds) {
   //float twopi;
   //float spacetime;
   fp_t time, space;
-  fp_t twopi;
   fp_t spacetime;
   uint8_t overrideHSV = 0;
   uint8_t overshift;
@@ -253,17 +252,17 @@ static void do_lightgene(uint32_t actual_leds) {
     if( !hue_dir ) {
       hue_temp = ((128 / (count / 2)) * i + (loop * hue_rate)) - 0L;
       hue_temp &= 0x1FF;
-      if( hue_temp <= 0xFF )
-	    hue_temp = hue_temp;
-      else {
+      if( hue_temp <= 0xFF ) {
+	    // hue_temp = hue_temp;
+      } else {
 	    hue_temp = (511-hue_temp);
       }
     } else {
       hue_temp = ((128 / (count / 2)) * i - (loop * hue_rate)) - 0L;
       hue_temp &= 0x1FF;
-      if( hue_temp <= 0xFF )
-	    hue_temp = hue_temp;
-      else {
+      if( hue_temp <= 0xFF ) {
+	    // hue_temp = hue_temp;
+      } else {
 	    hue_temp = (511-hue_temp);
       }
     }
@@ -279,15 +278,14 @@ static void do_lightgene(uint32_t actual_leds) {
     //                    +/- (indextime / tau(cd_rate)) * 2pi )
     // sign of rate is determined by cd_dir
 
-    twopi = FP_TWO_PI;
     //twopi = 3.14159265359 * 2.0;
     // space = 2pi * diploid.cd_period * (i / (count-1))
-    space = fp_mul(twopi, fp_mul(FP_FROM_INT(diploid.cd_period),
+    space = fp_mul(FP_TWO_PI, fp_mul(FP_FROM_INT(diploid.cd_period),
             fp_div(FP_FROM_INT(i), FP_FROM_INT(count-1)) ));
 	//space = twopi * diploid.cd_period * ((float)i / ((float)count - 1.0));
 
     // time = 2pi * (indextime) / tau
-    time = fp_mul(twopi, fp_div( FP_FROM_INT(indextime), FP_FROM_INT(tau) ));
+    time = fp_mul(FP_TWO_PI, fp_div( FP_FROM_INT(indextime), FP_FROM_INT(tau) ));
     //time = twopi * (float) indextime / (float) tau;
 
     //    time = FP_FROM_INT(0);
@@ -335,25 +333,31 @@ static void do_lightgene(uint32_t actual_leds) {
 void main(void) {
     uint32_t pin;
     uint32_t actual_leds;
-    uint32_t rate;
+
+    uint32_t index = 0;
+    uint32_t incoming = 0;
+    uint8_t *gene_ptr = (uint8_t *) &diploid;
+
+    // set event mask to 0, so that we don't halt when the event register is read.
+    // this allows us to poll the event register without blocking on it.
+    set_event_mask(0);
+
+    // FIFO1
+    uint32_t fifo1_slot0_mask = FIFO_EVENT_MASK(1, 0);
 
     // blocks until these are configured
     pin = pop_fifo1();
     actual_leds = pop_fifo1();
-    rate = pop_fifo1();
-
-    // set some default values for now
-    diploid.cd_period = 1;
-    diploid.cd_rate = 225;
-    diploid.cd_dir = 192;
-    diploid.sat = 190;
-    diploid.hue_ratedir = 10;
-    diploid.hue_base = 40;
-    diploid.hue_bound = 70;
-    diploid.lin = 190;
-    diploid.nonlin = 16;
 
     while (1) {
+        while ((event_status() & fifo1_slot0_mask) != 0) {
+            incoming = pop_fifo1();
+            // extract index & force it to be in-range
+            index = (incoming >> 8) & 0xff;
+            index = index % sizeof(genome);
+            gene_ptr[index] = (uint8_t) (incoming & 0xff);
+        }
+
         ws2812c(pin, led_buf, actual_leds);
         do_lightgene(actual_leds);
         loop_state += 1;
