@@ -1,5 +1,5 @@
 [package]
-name = "phoenix"
+name = "dc34-console"
 version = "0.1.0"
 edition = "2021"
 
@@ -14,20 +14,20 @@ num-derive = { version = "0.4.2", default-features = false }
 num-traits = { version = "0.2.14", default-features = false }
 bao1x-hal = { features = [
     "std",
-], optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-bao1x-api = { git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-bao1x-hal-service = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-bao1x-emu = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-usb-bao1x = { git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-modals = { default-features = false, optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-ux-api = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-pddb = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-xous-swapper = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
+], optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+bao1x-api = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+bao1x-hal-service = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+bao1x-emu = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+usb-bao1x = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+modals = { default-features = false, optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+ux-api = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+pddb = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+xous-swapper = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 bytemuck = { version = "1.24.0", features = ["derive"] }
-susres = { package = "xous-api-susres", git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
-keystore = { git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
+susres = { package = "xous-api-susres", git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+keystore = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 
-bio-lib = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
+bio-lib = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 arbitrary-int = "1.2"
 
 # pddb testing
@@ -37,7 +37,7 @@ rand_core = "0.6.4"
 
 aes = { default-features = false, optional = true, features = [
     "chaffing",
-], git = "https://github.com/betrusted-io/xous-core", rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79" }
+], git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 
 # time testing
 chrono = "0.4.33"
@@ -52,7 +52,7 @@ getrandom = "=0.2.12"
 
 [patch.crates-io.getrandom]
 git = "https://github.com/betrusted-io/xous-core"
-rev = "18e72a970ccd02894c27e8afbde7ba19cd4aff79"
+rev = "616bf65f6e379165464f50b1e79ec42aff77a683"
 
 [patch."https://github.com/betrusted-io/xous-core"]
 bao1x-hal = { path = "../xous-core/libs/bao1x-hal" }
@@ -62,6 +62,15 @@ modals = { path = "../xous-core/services/modals" }
 ux-api = { path = "../xous-core/libs/ux-api" }
 bio-lib = { path = "../xous-core/libs/bio-lib" }
 xous-api-susres = { path = "../xous-core/api/xous-api-susres" }
+
+[profile.release]
+codegen-units = 1  # 1 better optimizations
+debug = false
+strip = true
+lto = "fat"
+incremental = true
+#panic = "abort" # Remove panic output, which can reduce file size
+opt-level = "s" # z,s: Optimize for size instead of performance; 1 for easier debugging; comment out for "best performance" (but in Rust 1.72 this causes regressions)
 
 # aes testing
 [features]
