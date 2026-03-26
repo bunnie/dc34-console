@@ -43,5 +43,50 @@ fn main() {
     tt.sleep_ms(500).ok();
     leds::start_leds();
 
+    std::thread::spawn(|| {
+        let xns = xous_names::XousNames::new().unwrap();
+        let gfx = ux_api::service::gfx::Gfx::new(&xns).unwrap();
+
+        const MIN: u8 = 0;
+        const MAX: u8 = bao1x_hal::sh1107::DEFAULT_BRIGHTNESS;
+        // Number of steps across the full fade - tune this alongside the sleep duration
+        // to control the overall fade speed.
+        const STEPS: u8 = MAX;
+        const INC: u8 = 1;
+        // Gamma value: 2.2 is standard sRGB. Increase for a longer "dark" phase;
+        // decrease toward 1.0 to flatten back toward linear.
+        const GAMMA: f32 = 2.2;
+
+        // Precompute the lookup table at startup rather than doing powf() every tick.
+        let lut: Vec<u8> = (0..=STEPS)
+            .map(|i| {
+                let t = i as f32 / STEPS as f32; // 0.0 ..= 1.0 linear
+                let corrected = t.powf(GAMMA); // apply gamma
+                (corrected * MAX as f32).round() as u8 // scale to hardware range
+            })
+            .collect();
+
+        let mut up = false;
+        let mut t: u8 = 0; // linear animation parameter, 0 ..= STEPS
+
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(30));
+
+            if up {
+                t = t.saturating_add(INC).min(STEPS);
+                if t == STEPS {
+                    up = false;
+                }
+            } else {
+                t = t.saturating_sub(INC).max(MIN);
+                if t == MIN {
+                    up = true;
+                }
+            }
+
+            gfx.brightness(lut[t as usize]).unwrap();
+        }
+    });
+
     power::power_manager();
 }

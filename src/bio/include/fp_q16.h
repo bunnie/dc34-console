@@ -58,30 +58,12 @@ typedef int32_t fp_t;
 
 static inline fp_t fp_add(fp_t a, fp_t b)
 {
-	// Use unsigned integers because overflow with signed integers is
-	// an undefined operation (http://www.airs.com/blog/archives/120).
-	uint32_t _a = a, _b = b;
-	uint32_t sum = _a + _b;
-
-	// Overflow can only happen if sign of a == sign of b, and then
-	// it causes sign of sum != sign of a.
-	if (!((_a ^ _b) & 0x80000000) && ((_a ^ sum) & 0x80000000))
-		return (fp_t) FIX16_OVERFLOW;
-
-	return sum;
+	return a + b;
 }
 
 static inline fp_t fp_sub(fp_t a, fp_t b)
 {
-	uint32_t _a = a, _b = b;
-	uint32_t diff = _a - _b;
-
-	// Overflow can only happen if sign of a != sign of b, and then
-	// it causes sign of diff != sign of a.
-	if (((_a ^ _b) & 0x80000000) && ((_a ^ diff) & 0x80000000))
-		return (fp_t) FIX16_OVERFLOW;
-
-	return diff;
+	return a - b;
 }
 
 /* Saturating arithmetic */

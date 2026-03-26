@@ -12,7 +12,8 @@
 /*  Configuration                                                     */
 /* ------------------------------------------------------------------ */
 
-#define NUM_LEDS        16   // maximum number of LEDs
+#define NUM_LEDS        10
+#define LED_OFFSET      2 // for the "eyes"
 
 /* ------------------------------------------------------------------ */
 /*  Internals                                                         */
@@ -236,7 +237,7 @@ static void do_lightgene(uint32_t actual_leds) {
     reftime_lg = curtime;
   indextime = reftime_lg - curtime;
 
-  for( i = 0; i < count; i++ ) {
+  for( i = 0; i < count - LED_OFFSET; i++ ) {
     overrideHSV = 0;
     // compute one pixel's color
     // count is the current pixel index
@@ -281,7 +282,7 @@ static void do_lightgene(uint32_t actual_leds) {
     //twopi = 3.14159265359 * 2.0;
     // space = 2pi * diploid.cd_period * (i / (count-1))
     space = fp_mul(FP_TWO_PI, fp_mul(FP_FROM_INT(diploid.cd_period),
-            fp_div(FP_FROM_INT(i), FP_FROM_INT(count-1)) ));
+            fp_div(FP_FROM_INT(i), FP_FROM_INT(count - 1)) ));
 	//space = twopi * diploid.cd_period * ((float)i / ((float)count - 1.0));
 
     // time = 2pi * (indextime) / tau
@@ -295,7 +296,7 @@ static void do_lightgene(uint32_t actual_leds) {
       spacetime = fp_add( space, time );
       //spacetime = space + time;
     } else {
-      spacetime = fp_sub( space, time );
+      spacetime = fp_add( space, time );
       //spacetime = space - time;
     }
 
@@ -307,7 +308,7 @@ static void do_lightgene(uint32_t actual_leds) {
 
     if( diploid.nonlin > 127 )
       // add some nonlinearity to gamma-correct brightness
-      hsvC.v = (uint8_t) (((uint16_t) hsvC.v * (uint16_t) hsvC.v) >> 8 & 0xFF);
+      hsvC.v = (uint8_t) (((uint32_t) hsvC.v * (uint32_t) hsvC.v) >> 8 & 0xFF);
 
     // now compute lin effect, but only if the threshold is met
     if( diploid.lin < 90 ) {  // rare variant after a summing expression ~3% chance
@@ -320,14 +321,18 @@ static void do_lightgene(uint32_t actual_leds) {
     // go from RGB to HSV for a particular pixel
     if( !overrideHSV ) {
       rgbC = HsvToRgb(hsvC);
-      ledSetRGB(fb, i, rgbC.r, rgbC.g, rgbC.b, shift);
+      ledSetRGB(fb, i + LED_OFFSET, rgbC.r, rgbC.g, rgbC.b, shift);
     } else {
       overshift = shift - 2; // make this effect brighter so it's obvious
       if( overshift > 4 )
 	    overshift = 4;
-      ledSetRGB(fb, i, 255, 255, 255, overshift);
+      ledSetRGB(fb, i + LED_OFFSET, 255, 255, 255, overshift);
     }
   }
+
+  // make sure the "eyes" are off in this mode to save power
+  ledSetRGB(fb, 0, 0, 0, 0, shift);
+  ledSetRGB(fb, 1, 0, 0, 0, shift);
 }
 
 void main(void) {

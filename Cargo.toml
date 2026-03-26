@@ -66,7 +66,7 @@ xous-api-susres = { path = "../xous-core/api/xous-api-susres" }
 [profile.release]
 codegen-units = 1  # 1 better optimizations
 debug = false
-strip = true
+strip = false
 lto = "fat"
 incremental = true
 #panic = "abort" # Remove panic output, which can reduce file size
