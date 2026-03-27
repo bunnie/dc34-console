@@ -231,8 +231,8 @@ static void do_lightgene(uint32_t actual_leds) {
   uint32_t hue_temp;
   // diploid is static to this function and set when the lightgene is selected
 
-  tau = (uint32_t) map(diploid.cd_rate, 0, 255, 700, 8000);
-  curtime = time_ms;
+  tau = (uint32_t) map(diploid.cd_rate, 0, 255, 70, 800);
+  curtime = time_ms / 10;
   if( (curtime - reftime_lg) > tau )
     reftime_lg = curtime;
   indextime = reftime_lg - curtime;
@@ -280,13 +280,21 @@ static void do_lightgene(uint32_t actual_leds) {
     // sign of rate is determined by cd_dir
 
     //twopi = 3.14159265359 * 2.0;
-    // space = 2pi * diploid.cd_period * (i / (count-1))
-    space = fp_mul(FP_TWO_PI, fp_mul(FP_FROM_INT(diploid.cd_period),
-            fp_div(FP_FROM_INT(i), FP_FROM_INT(count - 1)) ));
+    // space = (2pi * diploid.cd_period * i) / (count-1))
+    space = fp_div(
+                fp_mul(
+                  FP_TWO_PI,
+                  fp_mul(
+                    FP_FROM_INT(diploid.cd_period),
+                    FP_FROM_INT(i)
+                  )
+                ),
+                FP_FROM_INT(count - 1)
+              );
 	//space = twopi * diploid.cd_period * ((float)i / ((float)count - 1.0));
 
     // time = 2pi * (indextime) / tau
-    time = fp_mul(FP_TWO_PI, fp_div( FP_FROM_INT(indextime), FP_FROM_INT(tau) ));
+    time = fp_div(fp_mul(FP_TWO_PI, FP_FROM_INT(indextime)), FP_FROM_INT(tau) );
     //time = twopi * (float) indextime / (float) tau;
 
     //    time = FP_FROM_INT(0);
@@ -296,7 +304,7 @@ static void do_lightgene(uint32_t actual_leds) {
       spacetime = fp_add( space, time );
       //spacetime = space + time;
     } else {
-      spacetime = fp_add( space, time );
+      spacetime = fp_sub( space, time );
       //spacetime = space - time;
     }
 
@@ -314,7 +322,7 @@ static void do_lightgene(uint32_t actual_leds) {
     if( diploid.lin < 90 ) {  // rare variant after a summing expression ~3% chance
       shoot = (loop / 2) % count;
       if( shoot == i ) {
-	    overrideHSV = 1;
+	       overrideHSV = 1;
       }
     }
 
@@ -323,10 +331,7 @@ static void do_lightgene(uint32_t actual_leds) {
       rgbC = HsvToRgb(hsvC);
       ledSetRGB(fb, i + LED_OFFSET, rgbC.r, rgbC.g, rgbC.b, shift);
     } else {
-      overshift = shift - 2; // make this effect brighter so it's obvious
-      if( overshift > 4 )
-	    overshift = 4;
-      ledSetRGB(fb, i + LED_OFFSET, 255, 255, 255, overshift);
+      ledSetRGB(fb, i + LED_OFFSET, 192, 192, 192, shift);
     }
   }
 

@@ -164,9 +164,6 @@ fp_t fp_div(fp_t a, fp_t b)
 	/* Figure out the sign of result */
 	if ((a ^ b) & 0x80000000)
 	{
-		if (result == (fp_t) FIX16_MINIMUM)
-				return FIX16_OVERFLOW;
-
 		result = -result;
 	}
 
@@ -297,9 +294,13 @@ static inline fp_t fp_cos(fp_t x)
          * fp_div is used here; for performance-critical paths the caller
          * should pre-reduce the angle. */
         int32_t periods = FP_TO_INT(fp_div(x, FP_TWO_PI));
-        x -= (fp_t)(periods * FP_TWO_PI);
-        /* Guard against rounding pushing x back over 2pi */
-        if (x >= FP_TWO_PI) x -= FP_TWO_PI;
+        // x -= (fp_t)(periods * FP_TWO_PI);
+		x = fp_sub( x, fp_mul(
+			FP_FROM_INT(periods), FP_TWO_PI )
+		);
+        /* Guard against rounding pushing x under 0 */
+        if (x < 0)
+		   x = fp_add(x, FP_TWO_PI);
     }
 
     /* --- Quadrant reduction to [0, pi/2] --- */
