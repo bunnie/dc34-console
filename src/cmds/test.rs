@@ -1,9 +1,9 @@
 use String;
 use bao1x_api::IoSetup;
-use num_derive::*;
+use dc34_api::BadgeType;
 use num_traits::ToPrimitive;
 
-use crate::{CommonEnv, ShellCmdApi};
+use crate::{CommonEnv, ShellCmdApi, bio::lightgenes::Haploid};
 
 #[derive(Debug)]
 pub struct Test {}
@@ -333,13 +333,11 @@ impl<'a> ShellCmdApi<'a> for Test {
                 }
             }
             "autogamy" => {
-                log::info!("connecting...");
-                let conn = _env.xns.request_connection_blocking(crate::leds::LED_SERVER).unwrap();
-                log::info!("sending autogamy");
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
                 xous::send_message(
                     conn,
                     xous::Message::new_scalar(
-                        crate::leds::LedManagerOp::Autogamy.to_usize().unwrap(),
+                        dc34_api::LedManagerOp::Autogamy.to_usize().unwrap(),
                         0,
                         0,
                         0,
@@ -348,6 +346,102 @@ impl<'a> ShellCmdApi<'a> for Test {
                 )
                 .ok();
                 log::info!("autogamy sent");
+            }
+            "bt" => {
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                if args.len() != 1 {
+                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
+                }
+                let badge_type = match args[0].as_str() {
+                    "human" => BadgeType::Human,
+                    "goon" => BadgeType::Goon,
+                    "comm" => BadgeType::Community,
+                    "ctf" => BadgeType::CtfContest,
+                    "other" => BadgeType::Other,
+                    "uber" => BadgeType::Uber,
+                    "village" => BadgeType::Village,
+                    _ => BadgeType::None,
+                };
+                log::info!("Setting BadgeType: {:?}", badge_type);
+                xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        dc34_api::LedManagerOp::GeneInit.to_usize().unwrap(),
+                        badge_type as u8 as usize,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                .ok();
+            }
+            "mate" => {
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                if args.len() != 1 {
+                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
+                }
+                let badge_type = match args[0].as_str() {
+                    "human" => BadgeType::Human,
+                    "goon" => BadgeType::Goon,
+                    "comm" => BadgeType::Community,
+                    "ctf" => BadgeType::CtfContest,
+                    "other" => BadgeType::Other,
+                    "uber" => BadgeType::Uber,
+                    "village" => BadgeType::Village,
+                    _ => BadgeType::None,
+                };
+                let sperm = Haploid::from_type(&badge_type);
+                let args = sperm.serialize_u32();
+                log::info!("Mating with fictional {:?}", badge_type);
+                xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        dc34_api::LedManagerOp::Syngamy.to_usize().unwrap(),
+                        args[0] as usize,
+                        args[1] as usize,
+                        args[2] as usize,
+                        args[3] as usize,
+                    ),
+                )
+                .ok();
+            }
+            "hue" => {
+                if args.len() != 1 {
+                    write!(ret, "{}", "Usage: hue <val>").ok();
+                } else {
+                    const INCREMENT: u8 = 32;
+                    let base = u8::from_str_radix(&args[0], 10)
+                        .inspect_err(|_| log::warn!("Invalid argument, replacing with 0"))
+                        .unwrap_or(0);
+                    let phenotype = Haploid {
+                        cd_period: 128,
+                        cd_rate: 128,
+                        cd_dir: 128,
+                        sat: 255,
+                        hue_ratedir: 128,
+                        hue_base: base,
+                        hue_bound: base + INCREMENT,
+                        chaser: 128,
+                        nonlin: 128,
+                    };
+                    let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                    log::info!("sending hue {}-{}", base, base + INCREMENT);
+                    let args = phenotype.serialize_u32();
+                    xous::send_message(
+                        conn,
+                        xous::Message::new_blocking_scalar(
+                            dc34_api::LedManagerOp::Force.to_usize().unwrap(),
+                            args[0] as usize,
+                            args[1] as usize,
+                            args[2] as usize,
+                            args[3] as usize,
+                        ),
+                    )
+                    .ok();
+                }
+            }
+            "k0" => {
+                // todo: fill in the k0 setting routine here
             }
             _ => {
                 write!(ret, "{}", helpstring).unwrap();

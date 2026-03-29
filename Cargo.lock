@@ -500,6 +500,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dc34-api"
+version = "0.1.0"
+dependencies = [
+ "num-derive",
+ "num-traits",
+ "rkyv",
+]
+
+[[package]]
 name = "dc34-console"
 version = "0.1.0"
 dependencies = [
@@ -513,6 +522,7 @@ dependencies = [
  "bio-lib",
  "bytemuck",
  "chrono",
+ "dc34-api",
  "getrandom 0.2.12",
  "keystore",
  "log",
@@ -523,6 +533,7 @@ dependencies = [
  "rand",
  "rand_chacha",
  "rand_core",
+ "rkyv",
  "usb-bao1x",
  "utralib",
  "ux-api",

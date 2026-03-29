@@ -26,6 +26,11 @@ xous-swapper = { optional = true, git = "https://github.com/betrusted-io/xous-co
 bytemuck = { version = "1.24.0", features = ["derive"] }
 susres = { package = "xous-api-susres", git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 keystore = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+rkyv = { version = "0.8.8", default-features = false, features = [
+    "std",
+    "alloc",
+] }
+dc34-api = { path = "../dc34-api/" }
 
 bio-lib = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 arbitrary-int = "1.2"

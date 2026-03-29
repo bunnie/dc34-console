@@ -56,7 +56,7 @@ static uint32_t loop_state = 0;
 static uint32_t time_ms = 0;
 static genome diploid;
 static uint32_t reftime_lg = 0;
-static uint8_t shift = 3;  // overall dimming for power savings
+static uint8_t shift = 4;  // overall dimming for power savings
 
 static void ledSetRGB(uint32_t *led_buf, int i, uint8_t r, uint8_t g, uint8_t b, uint32_t shift) {
   led_buf[i] = ((((uint32_t) g << 16) >> shift) & 0xFF0000)
@@ -315,11 +315,11 @@ static void do_lightgene(uint32_t actual_leds) {
     //hsvC.v = (uint8_t) 127.0 * (1.0 + cosf(spacetime));
 
     if( diploid.nonlin > 127 )
-      // add some nonlinearity to gamma-correct brightness
+      // add some nonlinearity to tune down the total brightness - saves battery life while improving aesthetics
       hsvC.v = (uint8_t) (((uint32_t) hsvC.v * (uint32_t) hsvC.v) >> 8 & 0xFF);
 
     // now compute lin effect, but only if the threshold is met
-    if( diploid.lin < 90 ) {  // rare variant after a summing expression ~3% chance
+    if( diploid.lin < 88 ) {  // rare variant after a summing expression ~3% chance
       shoot = (loop / 2) % count;
       if( shoot == i ) {
 	       overrideHSV = 1;

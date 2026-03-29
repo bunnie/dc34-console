@@ -5,21 +5,22 @@ use bao1x_api::bio::*;
 use bao1x_api::bio_resources::*;
 use bao1x_hal::bio::{Bio, CoreCsr};
 use bytemuck::{Pod, Zeroable};
+use dc34_api::BadgeType;
 use lightgenes::*;
 use rand::Rng;
 
-#[derive(Default, Pod, Zeroable, Copy, Clone)]
+#[derive(Default, Pod, Zeroable, Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Haploid {
-    cd_period: u8,
-    cd_rate: u8,
-    cd_dir: u8,
-    sat: u8,
-    hue_ratedir: u8,
-    hue_base: u8,
-    hue_bound: u8,
-    chaser: u8,
-    nonlin: u8,
+    pub cd_period: u8,
+    pub cd_rate: u8,
+    pub cd_dir: u8,
+    pub sat: u8,
+    pub hue_ratedir: u8,
+    pub hue_base: u8,
+    pub hue_bound: u8,
+    pub chaser: u8,
+    pub nonlin: u8,
 }
 impl Haploid {
     pub fn from_rand() -> Self {
@@ -36,25 +37,79 @@ impl Haploid {
         h
     }
 
+    pub fn from_type(badge_type: &BadgeType) -> Self {
+        let mut h = Haploid::default();
+        h.cd_period = rand::thread_rng().gen_range(0..badge_type.cd_period_max());
+        h.cd_rate = rand::thread_rng().gen();
+        h.cd_dir = rand::thread_rng().gen_range(badge_type.cd_dir_range());
+        h.sat = rand::thread_rng().gen_range(badge_type.sat_range());
+        h.hue_ratedir = rand::thread_rng().gen();
+        h.hue_base = rand::thread_rng().gen_range(badge_type.hue_range());
+        if *badge_type == BadgeType::Goon {
+            // ensure that red is always part of the Goon pallette
+            h.hue_base = 0;
+        }
+        h.hue_bound = rand::thread_rng().gen_range(h.hue_base..=badge_type.hue_range().end);
+        if *badge_type == BadgeType::Uber {
+            h.hue_bound = 255;
+        }
+        h.chaser = rand::thread_rng().gen_range(badge_type.chaser_range());
+        h.nonlin = rand::thread_rng().gen_range(badge_type.nonlin_range());
+        h
+    }
+
     pub fn serialize(&self) -> Vec<u8> { bytemuck::bytes_of(self).to_vec() }
+
+    pub fn deserialize(bytes: &[u8]) -> Option<Self> { bytemuck::try_from_bytes(bytes).ok().copied() }
+
+    /// always returns a length-4 serialization, suitable for Xous args
+    pub fn serialize_u32(&self) -> [u32; 4] {
+        let bytes = bytemuck::bytes_of(self);
+        let mut padded = [0u8; 16];
+        padded[..bytes.len()].copy_from_slice(bytes);
+        let mut out = [0u32; 4];
+        for (i, chunk) in padded.chunks(4).enumerate() {
+            out[i] = u32::from_le_bytes(chunk.try_into().unwrap());
+        }
+        out
+    }
+
+    /// gracefully handles 4 args by truncating the extra args that are just padding inserted by
+    /// serialize_u32()
+    pub fn deserialize_u32(words: &[u32]) -> Option<Self> {
+        let bytes: Vec<u8> =
+            words.iter().flat_map(|w| w.to_le_bytes()).take(std::mem::size_of::<Haploid>()).collect();
+        bytemuck::try_from_bytes(&bytes).ok().copied()
+    }
 }
 
-pub struct Diploid([Haploid; 2]);
+#[derive(Debug)]
+pub struct Diploid(pub [Haploid; 2]);
+
 impl Diploid {
     // computes the phenotypic expression of the diploid genome by blending the haploid pairs according
     // to rules that create dominant/recessive traits. In reality you don't get another strand of DNA, you get
     // proteins, but 'meh'. Close enough for computer science.
     pub fn phenotype(&self) -> Haploid {
         let mut e = Haploid {
-            cd_period: self.0[0].cd_period.saturating_add(self.0[1].cd_period).min(6),
+            // add -> periodicity tends toward the mean, capped at 6 periods
+            cd_period: ((self.0[0].cd_period + self.0[1].cd_period) / 2).min(6),
+            // average -> rate tends toward the mean
             cd_rate: ((self.0[0].cd_rate as u16 + self.0[1].cd_rate as u16) / 2) as u8,
+            // add -> clockwise direction is dominant
             cd_dir: self.0[0].cd_dir.saturating_add(self.0[1].cd_dir),
+            // add -> saturated colors are dominant
             sat: self.0[0].sat.saturating_add(self.0[1].sat),
+            // inverse add -> slower hue cycling is dominant
             hue_ratedir: (2 + (14 - self.0[0].hue_ratedir.saturating_add(self.0[1].hue_ratedir).min(14)))
                 % 14,
-            hue_base: self.0[0].hue_base.abs_diff(self.0[1].hue_base),
-            hue_bound: 255 - self.0[0].hue_bound.abs_diff(self.0[1].hue_bound),
+            // min -> wider color range is dominant
+            hue_base: self.0[0].hue_base.min(self.0[1].hue_base),
+            // max -> wider color range is dominant
+            hue_bound: self.0[0].hue_bound.max(self.0[1].hue_bound),
+            // chaser -> large chaser values (which is no chaser) is dominant
             chaser: self.0[0].chaser.saturating_add(self.0[1].chaser),
+            // nonlin -> brightness correction is dominant
             nonlin: self.0[0].chaser.saturating_add(self.0[1].nonlin),
         };
         // ensure that the bound is always bigger than the base
@@ -73,7 +128,7 @@ pub struct Lightgenes {
     tx: CoreCsr,
     // tracks the resources used by the object
     resource_grant: ResourceGrant,
-    gene: Diploid,
+    pub gene: Diploid,
 }
 
 impl Resources for Lightgenes {
@@ -197,15 +252,36 @@ impl Lightgenes {
     /// Test routine that causes the gene to breed against a new randomly selected "mate"
     pub fn autogamy(&mut self) {
         let mut egg = self.meiosis();
-        let mut sperm = Haploid::from_rand();
+        let sperm = Haploid::from_rand();
         mutate(&mut egg, 1);
         // sperm is random, no need to mutate
         self.gene.0 = [egg, sperm];
     }
 
+    pub fn syngamy(&mut self, mut sperm: Haploid, mut_rate: u8) {
+        let mut egg = self.meiosis();
+        mutate(&mut egg, mut_rate);
+        mutate(&mut sperm, mut_rate);
+        self.gene.0 = [egg, sperm];
+    }
+
+    /// Forces a given gene to be expressed. Does not affect the light gene state.
+    pub fn force(&mut self, phenotype: Haploid) {
+        log::info!("forcing {:?}", phenotype);
+        let mrnas = phenotype.serialize();
+        for (index, mrna) in mrnas.iter().enumerate() {
+            let codon = (index as u32) << 8 | *mrna as u32;
+            self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, codon);
+            while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
+                // don't overflow the fifo
+            }
+        }
+    }
+
     /// Express the current phenotype by sending it to the light rendering engine
     pub fn express(&mut self) {
         let phenotype = self.gene.phenotype();
+        log::info!("phenotype: {:?}", phenotype);
         let mrnas = phenotype.serialize();
         for (index, mrna) in mrnas.iter().enumerate() {
             let codon = (index as u32) << 8 | *mrna as u32;
