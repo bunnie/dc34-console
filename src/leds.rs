@@ -1,6 +1,4 @@
-use dc34_api::{BadgeType, LedManagerOp};
-
-use crate::bio::lightgenes::Haploid;
+use dc34_api::*;
 
 pub fn start_leds() {
     std::thread::spawn(move || {
@@ -42,7 +40,7 @@ fn leds() {
                         //
                         // TODO: increase rate if coming from the same badge type to help increase
                         // diversity among inbred pools
-                        lightgenes.syngamy(sperm, 64);
+                        lightgenes.syngamy(sperm, MutationRate::Baseline);
                         lightgenes.express();
                     } else {
                         log::warn!("Couldn't deserialize gene in call to Syngamy, ignoring")
@@ -63,11 +61,20 @@ fn leds() {
                     }
                 }
             }
-            LedManagerOp::GeneInit => {
+            LedManagerOp::GeneTest => {
                 if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
                     let badge_type = BadgeType::try_from(scalar.arg1 as u8).unwrap_or(BadgeType::None);
-                    lightgenes.gene.0 = [Haploid::from_type(&badge_type), Haploid::from_type(&badge_type)];
+                    lightgenes
+                        .gene
+                        .replace(Diploid([Haploid::from_type(&badge_type), Haploid::from_type(&badge_type)]));
                     log::info!("Init to {:?}: gene {:?}", badge_type, lightgenes.gene);
+                    lightgenes.express();
+                }
+            }
+            LedManagerOp::SetGene => {
+                if let Some(mem) = msg_opt.as_mut().unwrap().body.memory_message() {
+                    lightgenes.gene = Some(Diploid::receive(mem));
+                    log::info!("Received gene {:?}", lightgenes.gene);
                     lightgenes.express();
                 }
             }

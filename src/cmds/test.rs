@@ -1,9 +1,9 @@
 use String;
 use bao1x_api::IoSetup;
-use dc34_api::BadgeType;
+use dc34_api::*;
 use num_traits::ToPrimitive;
 
-use crate::{CommonEnv, ShellCmdApi, bio::lightgenes::Haploid};
+use crate::{CommonEnv, ShellCmdApi};
 
 #[derive(Debug)]
 pub struct Test {}
@@ -366,7 +366,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                 xous::send_message(
                     conn,
                     xous::Message::new_blocking_scalar(
-                        dc34_api::LedManagerOp::GeneInit.to_usize().unwrap(),
+                        dc34_api::LedManagerOp::GeneTest.to_usize().unwrap(),
                         badge_type as u8 as usize,
                         0,
                         0,
@@ -440,8 +440,52 @@ impl<'a> ShellCmdApi<'a> for Test {
                     .ok();
                 }
             }
+            "reset" => {
+                let pddb = pddb::Pddb::new();
+                pddb.delete_dict(DC34_DICT, None).ok();
+            }
+            // used by factory test to provision a k0 value
+            // test cases:
+            //   - JN1JoLLZdw2uR5FNxci8V5SHKZcaZ/Vv8TUGaCukIVFXu6Zi
+            //   - R4uPrdM4ZlKxgvQprePOQnlqxhRShMDu8QlCwwTDqcFSKdhk
             "k0" => {
-                // todo: fill in the k0 setting routine here
+                use base64::{Engine as _, engine::general_purpose};
+                if args.len() == 1 {
+                    match general_purpose::STANDARD.decode(&args[0]) {
+                        Ok(k0_data) => {
+                            if k0_data.len() == 32 + 4 {
+                                let k0 = &k0_data[..32];
+                                if crc32fast::hash(&k0)
+                                    == u32::from_le_bytes(k0_data[32..36].try_into().unwrap())
+                                {
+                                    log::info!("_|TT|_K0.SUCCESS,_|TE|_");
+                                    save_k0(k0.try_into().unwrap());
+                                } else {
+                                    log::info!("_|TT|_K0.FAIL,_|TE|_");
+                                    log::error!(
+                                        "k0 checksum failed {:x?}:{:x?}",
+                                        &k0_data[32..36],
+                                        &k0[..32]
+                                    );
+                                }
+                            } else {
+                                log::info!("_|TT|_K0.FAIL,_|TE|_");
+                                log::error!("k0 data length wrong {}", k0_data.len())
+                            }
+                        }
+                        Err(e) => {
+                            log::info!("_|TT|_K0.FAIL,_|TE|_");
+                            log::error!("Couldn't decode k0! {:?}", e)
+                        }
+                    }
+                }
+            }
+            "fakek0" => {
+                if get_k0().is_none() {
+                    save_k0(&[1u8; 32]);
+                } else {
+                    log::info!("k0 already set, refusing to overwrite!")
+                }
             }
             _ => {
                 write!(ret, "{}", helpstring).unwrap();

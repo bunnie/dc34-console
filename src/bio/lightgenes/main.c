@@ -340,6 +340,28 @@ static void do_lightgene(uint32_t actual_leds) {
   ledSetRGB(fb, 1, 0, 0, 0, shift);
 }
 
+void test_pattern(uint32_t actual_leds) {
+  uint32_t *fb = led_buf;
+  uint32_t count = actual_leds;
+  uint32_t loop = loop_state & 0x1FF;
+  uint32_t shoot;
+  uint32_t i;
+  uint32_t light = 0;
+
+  for(i = 0; i < count; i++) {
+    light = 0;
+    shoot = (loop / 2) % count;
+    if( shoot == i ) {
+        light = 1;
+    }
+    if( !light ) {
+      ledSetRGB(fb, i, 0, 0, 0, shift);
+    } else {
+      ledSetRGB(fb, i, 0x25, 0x25, 0x25, shift);
+    }
+  }
+}
+
 void main(void) {
     uint32_t pin;
     uint32_t actual_leds;
@@ -347,6 +369,7 @@ void main(void) {
     uint32_t index = 0;
     uint32_t incoming = 0;
     uint8_t *gene_ptr = (uint8_t *) &diploid;
+    uint32_t init = 0;
 
     // set event mask to 0, so that we don't halt when the event register is read.
     // this allows us to poll the event register without blocking on it.
@@ -366,10 +389,15 @@ void main(void) {
             index = (incoming >> 8) & 0xff;
             index = index % sizeof(genome);
             gene_ptr[index] = (uint8_t) (incoming & 0xff);
+            init = 1;
         }
 
         ws2812c(pin, led_buf, actual_leds);
-        do_lightgene(actual_leds);
+        if (init == 0) {
+          test_pattern(actual_leds);
+        } else {
+          do_lightgene(actual_leds);
+        }
         loop_state += 1;
 
         // decompose this into an outer loop that counts # of milliseconds

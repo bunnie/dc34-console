@@ -31,6 +31,8 @@ rkyv = { version = "0.8.8", default-features = false, features = [
     "alloc",
 ] }
 dc34-api = { path = "../dc34-api/" }
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
+crc32fast = "1.5.0"
 
 bio-lib = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 arbitrary-int = "1.2"
@@ -40,7 +42,7 @@ rand = { version = "0.8.5", features = ["getrandom"] }
 rand_chacha = { version = "0.3.1" }
 rand_core = "0.6.4"
 
-aes = { default-features = false, optional = true, features = [
+aes = { default-features = false, features = [
     "chaffing",
 ], git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 
@@ -67,6 +69,9 @@ modals = { path = "../xous-core/services/modals" }
 ux-api = { path = "../xous-core/libs/ux-api" }
 bio-lib = { path = "../xous-core/libs/bio-lib" }
 xous-api-susres = { path = "../xous-core/api/xous-api-susres" }
+
+[patch.crates-io.aes]
+path = "../xous-core/services/aes"
 
 [profile.release]
 codegen-units = 1  # 1 better optimizations

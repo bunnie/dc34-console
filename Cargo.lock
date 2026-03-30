@@ -15,12 +15,8 @@ dependencies = [
 [[package]]
 name = "aes"
 version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0"
 dependencies = [
- "cfg-if",
  "cipher",
- "cpufeatures",
 ]
 
 [[package]]
@@ -40,7 +36,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae0784134ba9375416d469ec31e7c5f9fa94405049cf08c5ce5b4698be673e0d"
 dependencies = [
  "aead",
- "aes 0.8.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "aes 0.8.4",
  "cipher",
  "ctr",
  "polyval",
@@ -54,7 +50,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69fa2b352dcefb5f7f3a5fb840e02665d311d878955380515e4fd50095dd3d8c"
 dependencies = [
- "aes 0.8.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "aes 0.8.4",
 ]
 
 [[package]]
@@ -237,6 +233,12 @@ checksum = "30e93c03064e7590d0466209155251b90c22e37fab1daf2771582598b5827557"
 dependencies = [
  "byteorder",
 ]
+
+[[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bio-lib"
@@ -450,6 +452,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc32fast"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9481c1c90cbf2ac953f07c8d4a58aa3945c425b7185c9154d67a65e4230da511"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -503,9 +514,19 @@ dependencies = [
 name = "dc34-api"
 version = "0.1.0"
 dependencies = [
+ "bao1x-api",
+ "bytemuck",
+ "getrandom 0.2.12",
+ "hex-literal",
+ "log",
  "num-derive",
  "num-traits",
+ "pddb",
+ "rand",
+ "rand_core",
  "rkyv",
+ "xous",
+ "xous-ipc",
 ]
 
 [[package]]
@@ -519,9 +540,11 @@ dependencies = [
  "bao1x-hal",
  "bao1x-hal-service",
  "base45",
+ "base64 0.22.1",
  "bio-lib",
  "bytemuck",
  "chrono",
+ "crc32fast",
  "dc34-api",
  "getrandom 0.2.12",
  "keystore",
@@ -933,6 +956,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-literal"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
 name = "hkdf"
@@ -2085,7 +2114,7 @@ dependencies = [
 name = "ux-api"
 version = "0.1.0"
 dependencies = [
- "base64",
+ "base64 0.5.2",
  "blitstr2",
  "digest 0.9.0",
  "enum_dispatch",
