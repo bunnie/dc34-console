@@ -1,8 +1,13 @@
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 
 use bao1x_api::{IoIrq, IoxHal};
 use bao1x_hal::i2c::I2c;
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
+use dc34_api::*;
 use num_traits::ToPrimitive;
 
 /*
@@ -14,18 +19,7 @@ pub fn start_power_management() {
 */
 
 const POWER_POLL_INTERVAL_MS: usize = 2500;
-const WFI_IDLE_SEC: u64 = 120;
-
-pub const POWER_MANAGER_SERVER: &'static str = "_phx_pwr_mgr_";
-
-#[derive(Debug, Copy, Clone, num_derive::FromPrimitive, num_derive::ToPrimitive)]
-pub enum PowerManagerOp {
-    Enable,
-    Poll,
-    MotionIrq,
-    KeyPress,
-    Invalid,
-}
+const WFI_IDLE_SEC: u64 = 30;
 
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
@@ -53,15 +47,14 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let _ = accel.read_register(i2c, regs::INT1_SRC)?;
 
     // Check if interrupt is active
-    let src = accel.read_register(i2c, regs::INT1_SRC)?;
-    let triggered = (src & 0x40) != 0;
-
-    log::info!("debug_test_int1_simple: INT1_SRC = 0x{:02X}, triggered = {}", src, triggered);
+    // let src = accel.read_register(i2c, regs::INT1_SRC)?;
+    // let triggered = (src & 0x40) != 0;
+    // log::info!("debug_test_int1_simple: INT1_SRC = 0x{:02X}, triggered = {}", src, triggered);
 
     Ok(())
 }
 
-pub fn power_manager() -> ! {
+pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
     let xns = xous_names::XousNames::new().unwrap();
     let tt = ticktimer::Ticktimer::new().unwrap();
 
@@ -84,6 +77,7 @@ pub fn power_manager() -> ! {
     kbd.register_listener(POWER_MANAGER_SERVER, PowerManagerOp::KeyPress.to_u32().unwrap() as usize);
 
     if accel.is_some() {
+        log::info!("Accelerometer interrupt enabled");
         iox_hal.set_irq_pin(
             bao1x_api::IoxPort::PC,
             15,
@@ -147,10 +141,12 @@ pub fn power_manager() -> ! {
                     */
 
                     gfx.set_power(false).unwrap();
+
                     susres.initiate_suspend().unwrap();
                     // we idled, until a button was pressed
                     tt.sleep_ms(100).ok();
                     gfx.set_power(true).unwrap();
+                    last_action_time_ms = now_ms;
                 }
             }
             PowerManagerOp::MotionIrq => {
@@ -164,13 +160,26 @@ pub fn power_manager() -> ! {
                             display_on = true;
                         }
                         */
-                        log::info!("Motion confirmed! {:?} {:?}", source, a.read_accel_mg(&mut i2c).unwrap());
+                        log::debug!(
+                            "Motion confirmed! {:?} {:?}",
+                            source,
+                            a.read_accel_mg(&mut i2c).unwrap()
+                        );
                         a.reset_highpass(&mut i2c).unwrap();
                     }
                 }
             }
             PowerManagerOp::KeyPress => {
                 last_action_time_ms = tt.elapsed_ms();
+            }
+            PowerManagerOp::SetFadeMode => {
+                if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
+                    if scalar.arg1 != 0 {
+                        run_led_fade.store(true, Ordering::SeqCst);
+                    } else {
+                        run_led_fade.store(false, Ordering::SeqCst);
+                    }
+                }
             }
             PowerManagerOp::Invalid => {
                 log::error!("Invalid power manager operation: {:?}", opcode);

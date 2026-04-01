@@ -7,7 +7,6 @@ pub fn start_leds() {
 }
 
 fn leds() {
-    let tt = ticktimer::Ticktimer::new().unwrap();
     let xns = xous_names::XousNames::new().unwrap();
 
     let sid = xns.register_name(dc34_api::LED_SERVER, None).unwrap();

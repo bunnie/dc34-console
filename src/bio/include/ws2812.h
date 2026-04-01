@@ -21,6 +21,7 @@ void ws2812c(uint32_t pin, uint32_t *strip, uint32_t len) {
     // main loop
     for (uint32_t i = 0; i < len; i++) {
         led = strip[i];
+        wait_quantum(); // fixes stutter in WFI mode
         for (uint32_t bit = 0; bit < 24; bit++) {
             if ((led & 0x800000) == 0) {
                 // 2 hi

@@ -56,7 +56,7 @@ static uint32_t loop_state = 0;
 static uint32_t time_ms = 0;
 static genome diploid;
 static uint32_t reftime_lg = 0;
-static uint8_t shift = 4;  // overall dimming for power savings
+static uint8_t shift = 5;  // overall dimming for power savings
 
 static void ledSetRGB(uint32_t *led_buf, int i, uint8_t r, uint8_t g, uint8_t b, uint32_t shift) {
   led_buf[i] = ((((uint32_t) g << 16) >> shift) & 0xFF0000)
