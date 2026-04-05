@@ -1055,7 +1055,6 @@ dependencies = [
 [[package]]
 name = "keystore"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -1068,8 +1067,8 @@ dependencies = [
  "digest 0.10.7",
  "hex",
  "hkdf",
- "keystore-api",
- "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "keystore-api 0.1.0",
+ "locales 0.1.0",
  "log",
  "num-derive",
  "num-traits",
@@ -1090,13 +1089,29 @@ dependencies = [
 [[package]]
 name = "keystore-api"
 version = "0.1.0"
+dependencies = [
+ "cipher",
+ "locales 0.1.0",
+ "num-derive",
+ "num-traits",
+ "precursor-hal 0.1.0",
+ "rkyv",
+ "xous",
+ "xous-api-names",
+ "xous-ipc",
+ "zeroize",
+]
+
+[[package]]
+name = "keystore-api"
+version = "0.1.0"
 source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
  "cipher",
  "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
  "num-derive",
  "num-traits",
- "precursor-hal",
+ "precursor-hal 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
  "rkyv",
  "xous",
  "xous-api-names",
@@ -1456,7 +1471,7 @@ dependencies = [
  "hex",
  "hkdf",
  "keystore",
- "keystore-api",
+ "keystore-api 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
  "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
  "log",
  "modals",
@@ -1517,6 +1532,10 @@ checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
 ]
+
+[[package]]
+name = "precursor-hal"
+version = "0.1.0"
 
 [[package]]
 name = "precursor-hal"

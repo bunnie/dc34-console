@@ -19,7 +19,8 @@ pub fn start_power_management() {
 */
 
 const POWER_POLL_INTERVAL_MS: usize = 2500;
-const WFI_IDLE_SEC: u64 = 30;
+const WFI_IDLE_SEC_INIT: u64 = 60;
+const WFI_MIN_SEC: usize = 5;
 
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
@@ -57,6 +58,23 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
 pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
     let xns = xous_names::XousNames::new().unwrap();
     let tt = ticktimer::Ticktimer::new().unwrap();
+
+    // setup the VBUS/VBAT measurement pins
+    let iox = bao1x_api::IoxHal::new();
+    let adc = bao1x_hal_service::Adc::new();
+    use bao1x_api::IoSetup;
+    iox.setup_pin(
+        bao1x_api::IoxPort::PA,
+        4,
+        Some(bao1x_api::IoxDir::Input),
+        Some(bao1x_api::IoxFunction::Gpio),
+        Some(bao1x_api::IoxEnable::Enable),
+        Some(bao1x_api::IoxEnable::Disable),
+        None,
+        None,
+    );
+    // safety - we have manually checked there are no conflicts with this mapping
+    unsafe { adc.enable_channel(bao1x_hal::udma::AdcExtChannel::Adc3) };
 
     let mut i2c = I2c::new();
     // Initialize
@@ -103,7 +121,8 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
         }
     });
 
-    let mut enabled = false;
+    let mut enabled = true;
+    let mut idle_sec = WFI_IDLE_SEC_INIT;
     // let mut display_on = true;
 
     let mut last_action_time_ms = tt.elapsed_ms();
@@ -123,6 +142,9 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
                     } else {
                         enabled = false;
                     }
+                    if scalar.arg2 > WFI_MIN_SEC {
+                        idle_sec = scalar.arg2 as u64;
+                    }
                 }
             }
             PowerManagerOp::Poll => {
@@ -132,7 +154,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
                     // an action has *always* happened
                     last_action_time_ms = now_ms;
                 }
-                if now_ms - last_action_time_ms > WFI_IDLE_SEC * 1000 {
+                if now_ms - last_action_time_ms > idle_sec * 1000 {
                     /*
                     if display_on {
                         gfx.set_power(false).unwrap();
@@ -179,6 +201,39 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
                     } else {
                         run_led_fade.store(false, Ordering::SeqCst);
                     }
+                }
+            }
+            PowerManagerOp::GetAccelId => {
+                if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    if let Some(a) = accel.as_ref() {
+                        scalar.arg1 = 1;
+                        let id = a.read_who_am_i(&mut i2c).unwrap_or(0);
+                        scalar.arg2 = id as usize;
+                    } else {
+                        scalar.arg1 = 0;
+                    }
+                }
+            }
+            PowerManagerOp::GetVbat => {
+                if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    let vbat_raw = adc.read_raw(
+                        bao1x_hal::udma::AdcSource::Ext(bao1x_hal::udma::AdcExtChannel::Adc3),
+                        Some(8),
+                    );
+                    let vbat_mv = (bao1x_hal::udma::Adc::raw_to_voltage(vbat_raw) * 1000.0f32) as usize;
+                    scalar.arg1 = 1;
+                    scalar.arg2 = vbat_mv;
+                }
+            }
+            PowerManagerOp::GetVbus => {
+                if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    scalar.arg1 = 1;
+                    scalar.arg2 =
+                        if iox.get_gpio_pin_value(bao1x_api::IoxPort::PA, 4) == bao1x_api::IoxValue::High {
+                            1
+                        } else {
+                            0
+                        };
                 }
             }
             PowerManagerOp::Invalid => {

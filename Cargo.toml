@@ -69,6 +69,7 @@ modals = { path = "../xous-core/services/modals" }
 ux-api = { path = "../xous-core/libs/ux-api" }
 bio-lib = { path = "../xous-core/libs/bio-lib" }
 xous-api-susres = { path = "../xous-core/api/xous-api-susres" }
+keystore = {path = "../xous-core/services/keystore" }
 
 [patch.crates-io.aes]
 path = "../xous-core/services/aes"
@@ -105,6 +106,7 @@ hosted-baosec = [
     "pddb/hosted-baosec",
     "bao1x-hal/hosted-baosec",
 ]
+owc-test = ["keystore/owc-inc"]
 
 # Activating this makes this crate *try* to grab the DUART. To improve its odds
 # of winning the race, shift its position to first in the list in the PIDs to be

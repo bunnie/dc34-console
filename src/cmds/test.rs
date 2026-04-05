@@ -487,6 +487,120 @@ impl<'a> ShellCmdApi<'a> for Test {
                     log::info!("k0 already set, refusing to overwrite!")
                 }
             }
+            "hw" => {
+                write!(ret, "Xous version: {}", _env.ticktimer.get_version()).unwrap();
+                log::info!(
+                    "{}VER.XOUS,{},{}",
+                    bao1x_hal::board::BOOKEND_START,
+                    _env.ticktimer.get_version(),
+                    bao1x_hal::board::BOOKEND_END
+                );
+                let conn = _env.xns.request_connection_blocking(dc34_api::POWER_MANAGER_SERVER).unwrap();
+                let mut passing = true;
+                match xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        PowerManagerOp::GetAccelId.to_usize().unwrap(),
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                ) {
+                    Ok(xous::Result::Scalar5(_id, exists, val, _, _)) => {
+                        if exists != 0 {
+                            if val != 0x33 {
+                                passing = false;
+                                log::info!("bad accel ID: {:x}", val);
+                                log::error!("_|TT|_HW.FAIL,ACCEL,{:x}_|TE|_", val);
+                            }
+                        } else {
+                            // TODO: uncomment this for production
+                            // passing = false;
+                            log::info!("accel missing");
+                            log::error!("_|TT|_HW.FAIL,ACCEL,_|TE|_");
+                        }
+                    }
+                    _ => {
+                        passing = false;
+                        log::error!("_|TT|_HW.ERROR,_|TE|_");
+                    }
+                };
+                // skip the first reading as it's bogus
+                xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        PowerManagerOp::GetVbat.to_usize().unwrap(),
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                .ok();
+                _env.ticktimer.sleep_ms(100).ok();
+                match xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        PowerManagerOp::GetVbat.to_usize().unwrap(),
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                ) {
+                    Ok(xous::Result::Scalar5(_id, ok, val, _, _)) => {
+                        if ok != 0 {
+                            // set point of tester is 2410 volts
+                            // voltages are scaled 22 / (22 + 47) = 0.3188
+                            // target code is thus 768
+                            // +/- 15% = 652 - 883
+                            log::info!("_|TT|_HW.VBAT,{},_|TE|_", val);
+                        } else {
+                            log::info!("vbat missing");
+                            passing = false;
+                            log::error!("_|TT|_HW.FAIL,VBAT,_|TE|_");
+                        }
+                    }
+                    _ => {
+                        passing = false;
+                        log::error!("_|TT|_HW.ERROR,_|TE|_")
+                    }
+                };
+                match xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        PowerManagerOp::GetVbus.to_usize().unwrap(),
+                        0,
+                        0,
+                        0,
+                        0,
+                    ),
+                ) {
+                    Ok(xous::Result::Scalar5(_id, _ok, vbus, _, _)) => {
+                        // correct state depends on configuration of tester. Just report the value.
+                        log::info!("_|TT|_HW.VBUS,{},_|TE|_", vbus);
+                    }
+                    _ => {
+                        passing = false;
+                        log::error!("_|TT|_HW.ERROR,_|TE|_")
+                    }
+                };
+                if passing {
+                    log::info!("_|TT|_HW.PASS,_|TE|_");
+                } else {
+                    log::info!("_|TT|_HW.FAIL,_|TE|_");
+                }
+            }
+            #[cfg(feature = "owc-test")]
+            "owc" => {
+                let keystore = keystore::Keystore::new(&_env.xns);
+                log::info!("{:?}", keystore.get_owc_decoded::<bao1x_api::offsets::common::BoardTypeCoding>());
+
+                log::info!("{:?}", keystore.get_owc_decoded::<bao1x_api::offsets::common::BootWaitCoding>());
+                log::info!("{:?}", keystore.inc_owc_coded::<bao1x_api::offsets::common::BootWaitCoding>());
+                log::info!("{:?}", keystore.get_owc_decoded::<bao1x_api::offsets::common::BootWaitCoding>());
+            }
             _ => {
                 write!(ret, "{}", helpstring).unwrap();
             }

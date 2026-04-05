@@ -357,7 +357,7 @@ void test_pattern(uint32_t actual_leds) {
     if( !light ) {
       ledSetRGB(fb, i, 0, 0, 0, shift);
     } else {
-      ledSetRGB(fb, i, 0x25, 0x25, 0x25, shift);
+      ledSetRGB(fb, i, 0x35, 0x35, 0x35, shift);
     }
   }
 }

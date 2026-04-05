@@ -27,23 +27,6 @@ fn main() {
     let usb = usb_bao1x::UsbHid::new();
     usb.serial_console_input_injection();
 
-    // setup the VBUS/VBAT measurement pins
-    let iox = bao1x_api::IoxHal::new();
-    let adc = bao1x_hal_service::Adc::new();
-    use bao1x_api::IoSetup;
-    iox.setup_pin(
-        bao1x_api::IoxPort::PA,
-        4,
-        Some(bao1x_api::IoxDir::Input),
-        Some(bao1x_api::IoxFunction::Gpio),
-        Some(bao1x_api::IoxEnable::Enable),
-        Some(bao1x_api::IoxEnable::Disable),
-        None,
-        None,
-    );
-    // safety - we have manually checked there are no conflicts with this mapping
-    unsafe { adc.enable_channel(bao1x_hal::udma::AdcExtChannel::Adc3) };
-
     tt.sleep_ms(500).ok();
     leds::start_leds();
 
