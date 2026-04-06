@@ -31,9 +31,11 @@ fn main() {
     leds::start_leds();
 
     let run_led_fade = Arc::new(AtomicBool::new(false));
+    let plugged_in = Arc::new(AtomicBool::new(false));
 
     std::thread::spawn({
         let run_led_fade = run_led_fade.clone();
+        let plugged_in = plugged_in.clone();
         move || {
             let xns = xous_names::XousNames::new().unwrap();
             let gfx = ux_api::service::gfx::Gfx::new(&xns).unwrap();
@@ -63,7 +65,8 @@ fn main() {
             let mut was_fading = run_led_fade.load(Ordering::SeqCst);
             loop {
                 let do_fade = run_led_fade.load(Ordering::SeqCst);
-                if do_fade {
+                let is_plugged = plugged_in.load(Ordering::SeqCst);
+                if do_fade && !is_plugged {
                     std::thread::sleep(std::time::Duration::from_millis(80));
 
                     if up {
@@ -80,7 +83,7 @@ fn main() {
 
                     gfx.brightness(lut[t as usize]).unwrap();
                 } else {
-                    if was_fading {
+                    if was_fading || is_plugged {
                         gfx.brightness(MAX).unwrap();
                         t = MAX;
                     }
@@ -91,5 +94,5 @@ fn main() {
         }
     });
 
-    power::power_manager(run_led_fade);
+    power::power_manager(run_led_fade, plugged_in);
 }

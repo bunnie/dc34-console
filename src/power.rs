@@ -4,7 +4,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use bao1x_api::{IoIrq, IoxHal};
+use bao1x_api::{IoIrq, IoxHal, IoxValue};
 use bao1x_hal::i2c::I2c;
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
 use dc34_api::*;
@@ -55,7 +55,7 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     Ok(())
 }
 
-pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
+pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>) -> ! {
     let xns = xous_names::XousNames::new().unwrap();
     let tt = ticktimer::Ticktimer::new().unwrap();
 
@@ -84,7 +84,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
     if let Some(a) = &mut accel {
         setup_accel(a, &mut i2c).unwrap();
     } else {
-        log::warn!("No accelerometer found, disabling wakeup features");
+        log::warn!("No accelerometer found!");
     }
 
     let susres = susres::Susres::new_without_hook(&xns).unwrap();
@@ -96,16 +96,32 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
     let kbd = bao1x_api::keyboard::Keyboard::new(&xns).unwrap();
     kbd.register_listener(POWER_MANAGER_SERVER, PowerManagerOp::KeyPress.to_u32().unwrap() as usize);
 
-    if accel.is_some() {
+    let mut orientation = Orientation::FaceUp;
+    if let Some(a) = accel.as_mut() {
         log::info!("Accelerometer interrupt enabled");
-        iox_hal.set_irq_pin(
+        let _ = iox_hal.set_irq_pin(
             bao1x_api::IoxPort::PC,
             15,
-            bao1x_api::IoxValue::High,
+            bao1x_api::IoxValue::Low,
             POWER_MANAGER_SERVER,
             PowerManagerOp::MotionIrq.to_usize().unwrap(),
         );
+        if let Ok(o) = a.get_orientation(&mut i2c) {
+            orientation = o;
+        }
     }
+    let vbus_io = (bao1x_api::IoxPort::PA, 4u8);
+    let mut vbus_state = iox.get_gpio_pin_value(vbus_io.0, vbus_io.1);
+    plugged_in.store(vbus_state == IoxValue::High, Ordering::SeqCst);
+    let vbus_irq_index = iox_hal
+        .set_irq_pin(
+            vbus_io.0,
+            vbus_io.1,
+            !vbus_state,
+            POWER_MANAGER_SERVER,
+            PowerManagerOp::VbusIrq.to_usize().unwrap(),
+        )
+        .expect("Couldn't claim Vbus IRQ");
 
     let cid = xous::connect(sid).unwrap();
     std::thread::spawn({
@@ -123,9 +139,8 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
         }
     });
 
-    let mut enabled = true;
+    let mut pwr_mgr_enabled = true;
     let mut idle_sec = WFI_IDLE_SEC_INIT;
-    // let mut display_on = true;
 
     let mut last_action_time_ms = tt.elapsed_ms();
     let mut msg_opt = None;
@@ -140,9 +155,9 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
             PowerManagerOp::Enable => {
                 if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
                     if scalar.arg1 != 0 {
-                        enabled = true;
+                        pwr_mgr_enabled = true;
                     } else {
-                        enabled = false;
+                        pwr_mgr_enabled = false;
                     }
                     if scalar.arg2 > WFI_MIN_SEC {
                         idle_sec = scalar.arg2 as u64;
@@ -151,19 +166,13 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
             }
             PowerManagerOp::Poll => {
                 let now_ms = tt.elapsed_ms();
-                if !enabled {
+                // disable power management if VBUS is plugged in
+                if !pwr_mgr_enabled || vbus_state == IoxValue::High {
                     // this effectively disables the if statement below by claiming
                     // an action has *always* happened
                     last_action_time_ms = now_ms;
                 }
                 if now_ms - last_action_time_ms > idle_sec * 1000 {
-                    /*
-                    if display_on {
-                        gfx.set_power(false).unwrap();
-                        display_on = false;
-                    }
-                    */
-
                     gfx.set_power(false).unwrap();
 
                     susres.initiate_suspend().unwrap();
@@ -178,26 +187,36 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
                     last_action_time_ms = tt.elapsed_ms();
                     let source = a.read_int1_source(&mut i2c).unwrap();
                     if source.active {
-                        /*
-                        if !display_on {
-                            gfx.set_power(true);
-                            display_on = true;
-                        }
-                        */
                         log::debug!(
                             "Motion confirmed! {:?} {:?}",
                             source,
                             a.read_accel_mg(&mut i2c).unwrap()
                         );
                         a.reset_highpass(&mut i2c).unwrap();
+                        if let Ok(o) = a.get_orientation(&mut i2c) {
+                            if orientation != o && o != Orientation::Unknown {
+                                log::debug!("New orientation: {:?}", o);
+                                orientation = o;
+                                gfx.flip_screen(o == Orientation::FaceDown).ok();
+                                kbd.flip_orientation(o == Orientation::FaceDown);
+                            }
+                        }
                     }
                 }
+            }
+            PowerManagerOp::VbusIrq => {
+                // check the current value, because we can have chatter after interrupts
+                vbus_state = iox.get_gpio_pin_value(vbus_io.0, vbus_io.1);
+                plugged_in.store(vbus_state == IoxValue::High, Ordering::SeqCst);
+                // flip the edge trigger to opposite the current state
+                iox_hal.update_irq_pin(POWER_MANAGER_SERVER, vbus_irq_index, Some(!vbus_state), None);
             }
             PowerManagerOp::KeyPress => {
                 last_action_time_ms = tt.elapsed_ms();
             }
             PowerManagerOp::SetFadeMode => {
                 if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
+                    // only do the fading effect if we're on battery (it's a power saving feature)
                     if scalar.arg1 != 0 {
                         run_led_fade.store(true, Ordering::SeqCst);
                     } else {

@@ -371,6 +371,9 @@ void main(void) {
     uint8_t *gene_ptr = (uint8_t *) &diploid;
     uint32_t init = 0;
 
+    // this is used to skip LED updating during e.g. clock rate changes
+    uint32_t led_gate = 0;
+
     // set event mask to 0, so that we don't halt when the event register is read.
     // this allows us to poll the event register without blocking on it.
     set_event_mask(0);
@@ -385,6 +388,17 @@ void main(void) {
     while (1) {
         while ((event_status() & fifo1_slot0_mask) != 0) {
             incoming = pop_fifo1();
+            // modify gates
+            /*
+            if ((incoming & 0x80000000) != 0) {
+              led_gate = 1;
+              continue;
+            }
+            if ((incoming & 0x40000000) != 0) {
+              continue;
+              led_gate = 0;
+            } */
+
             // extract index & force it to be in-range
             index = (incoming >> 8) & 0xff;
             index = index % sizeof(genome);
@@ -392,7 +406,9 @@ void main(void) {
             init = 1;
         }
 
-        ws2812c(pin, led_buf, actual_leds);
+        if (led_gate == 0) {
+          ws2812c(pin, led_buf, actual_leds);
+        }
         if (init == 0) {
           test_pattern(actual_leds);
         } else {

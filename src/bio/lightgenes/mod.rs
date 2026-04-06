@@ -156,6 +156,20 @@ impl Lightgenes {
         }
     }
 
+    pub fn pause_rendering(&mut self) {
+        while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
+            // don't overflow the fifo
+        }
+        self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x8000_0000);
+    }
+
+    pub fn resume_rendering(&mut self) {
+        while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
+            // don't overflow the fifo
+        }
+        self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x4000_0000);
+    }
+
     #[allow(dead_code)]
     pub fn map(x: i32, in_min: i32, in_max: i32, out_min: i32, out_max: i32) -> Option<i32> {
         if in_max == in_min {
