@@ -526,19 +526,21 @@ impl<'a> ShellCmdApi<'a> for Test {
                         log::error!("_|TT|_HW.ERROR,_|TE|_");
                     }
                 };
-                // skip the first reading as it's bogus
-                xous::send_message(
-                    conn,
-                    xous::Message::new_blocking_scalar(
-                        PowerManagerOp::GetVbat.to_usize().unwrap(),
-                        0,
-                        0,
-                        0,
-                        0,
-                    ),
-                )
-                .ok();
-                _env.ticktimer.sleep_ms(100).ok();
+                // skip the first readings as they are bogus
+                for _ in 0..2 {
+                    xous::send_message(
+                        conn,
+                        xous::Message::new_blocking_scalar(
+                            PowerManagerOp::GetVbat.to_usize().unwrap(),
+                            0,
+                            0,
+                            0,
+                            0,
+                        ),
+                    )
+                    .ok();
+                    _env.ticktimer.sleep_ms(100).ok();
+                }
                 match xous::send_message(
                     conn,
                     xous::Message::new_blocking_scalar(

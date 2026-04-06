@@ -75,6 +75,8 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>) -> ! {
     );
     // safety - we have manually checked there are no conflicts with this mapping
     unsafe { adc.enable_channel(bao1x_hal::udma::AdcExtChannel::Adc3) };
+    let dummy = adc.read_raw(bao1x_hal::udma::AdcSource::Ext(bao1x_hal::udma::AdcExtChannel::Adc3), Some(8));
+    log::info!("ADC pipe-clearing value {}", dummy);
 
     let mut i2c = I2c::new();
     // Initialize
