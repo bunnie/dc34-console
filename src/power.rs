@@ -2,25 +2,34 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::Duration;
 
 use bao1x_api::{IoIrq, IoxHal, IoxValue};
 use bao1x_hal::i2c::I2c;
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
+use chrono::Utc;
 use dc34_api::*;
 use num_traits::ToPrimitive;
 
 /*
-pub fn start_power_management() {
-    std::thread::spawn(move || {
-        power_manager();
-    });
-}
+Power manager policy notes
+
+Goals:
+- aggressively enter wfi sleep - screen inactive, lights running
+  - wake from wfi sleep should be keypress only
+  - wfi sleep control time is set by application
+- after a longer period of time, go into deep sleep
+  - no lights running
+  - wake by accelerometer interrupt or keypress
+  - deep sleep control time is set by power manager
 */
 
 const POWER_POLL_INTERVAL_MS: usize = 2500;
+// this gives some margin for the keypress to "catch up" in case both motion and
+// keypress interrupts are simultaneously fired as a wakeup event
+const MOTION_IRQ_MARGIN_MS: u64 = 1000;
 const WFI_IDLE_SEC_INIT: u64 = 60;
 const WFI_MIN_SEC: usize = 5;
+const DEEP_SLEEP_SEC: i64 = 5 * 60; // 15 * 60; // 15 minutes of total quiescence in deployment
 
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
@@ -38,11 +47,12 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     // CTRL_REG3: Enable IA1 on INT1 pin
     accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40)?;
 
+    // enable high pass filtering
     accel.write_register(i2c, regs::CTRL_REG2, 0b00_00_0001)?;
     accel.read_register(i2c, regs::REFERENCE)?;
 
     // Wait a bit for new samples
-    std::thread::sleep(Duration::from_millis(150));
+    // std::thread::sleep(Duration::from_millis(150));
 
     // Clear any pending interrupt by reading INT1_SRC
     let _ = accel.read_register(i2c, regs::INT1_SRC)?;
@@ -52,6 +62,20 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     // let triggered = (src & 0x40) != 0;
     // log::info!("debug_test_int1_simple: INT1_SRC = 0x{:02X}, triggered = {}", src, triggered);
 
+    Ok(())
+}
+
+fn accel_enable_int(accel: &mut Lis2dh12, i2c: &mut I2c, enable: bool) -> Result<(), xous::Error> {
+    // Clear any pending interrupt by reading INT1_SRC
+    let _ = accel.read_register(i2c, regs::INT1_SRC)?;
+
+    let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
+    if enable {
+        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40)?;
+        accel.reset_highpass(i2c)?;
+    } else {
+        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 & !0x40)?;
+    }
     Ok(())
 }
 
@@ -83,6 +107,8 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
     let mut accel = Lis2dh12::new(&mut i2c).ok();
     if let Some(a) = &mut accel {
         setup_accel(a, &mut i2c).unwrap();
+        // enable the interrupts on boot
+        accel_enable_int(a, &mut i2c, true).unwrap();
     } else {
         log::warn!("No accelerometer found!");
     }
@@ -95,6 +121,13 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
 
     let kbd = bao1x_api::keyboard::Keyboard::new(&xns).unwrap();
     kbd.register_listener(POWER_MANAGER_SERVER, PowerManagerOp::KeyPress.to_u32().unwrap() as usize);
+
+    let rtc = bao1x_hal_service::Rtc::new();
+    let rovers = rtc.set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC)).unwrap_or(0);
+    if rovers > 1 {
+        log::warn!("Rollover case for RTC not handled, wakeup will fail. rovers: {}", rovers);
+    }
+    let mut alarm_set = true;
 
     let mut orientation = Orientation::FaceUp;
     if let Some(a) = accel.as_mut() {
@@ -140,6 +173,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
     });
 
     let mut pwr_mgr_enabled = true;
+    let mut wfi_awaiting_keypress = false;
     let mut idle_sec = WFI_IDLE_SEC_INIT;
 
     let mut last_action_time_ms = tt.elapsed_ms();
@@ -171,27 +205,42 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                     // this effectively disables the if statement below by claiming
                     // an action has *always* happened
                     last_action_time_ms = now_ms;
+
+                    if alarm_set {
+                        // clear the RTC alarm. The alarm_set flag just makes things a little
+                        // more efficient so we're not redundantly clearing the alarm every
+                        // poll
+                        rtc.clear_wakeup();
+                        alarm_set = false;
+                    }
                 }
-                if now_ms - last_action_time_ms > idle_sec * 1000 {
+                if !wfi_awaiting_keypress && (now_ms - last_action_time_ms > idle_sec * 1000)
+                    || wfi_awaiting_keypress && (now_ms - last_action_time_ms > MOTION_IRQ_MARGIN_MS)
+                {
                     gfx.set_power(false).unwrap();
+                    wfi_awaiting_keypress = true; // this tells the KeyPress handler we have to turn on the screen
 
                     susres.initiate_suspend().unwrap();
                     // we idled, until a button was pressed
+
+                    // brief delay for everything to catch up
                     tt.sleep_ms(100).ok();
-                    gfx.set_power(true).unwrap();
                     last_action_time_ms = now_ms;
+
+                    // screen wake-up is delegated to KeyPress handler -
+                    // this prevents the screen glitch on RTC wake event
                 }
             }
             PowerManagerOp::MotionIrq => {
                 if let Some(a) = &mut accel {
-                    last_action_time_ms = tt.elapsed_ms();
                     let source = a.read_int1_source(&mut i2c).unwrap();
                     if source.active {
+                        /*
                         log::debug!(
                             "Motion confirmed! {:?} {:?}",
                             source,
                             a.read_accel_mg(&mut i2c).unwrap()
-                        );
+                        ); */
                         a.reset_highpass(&mut i2c).unwrap();
                         if let Ok(o) = a.get_orientation(&mut i2c) {
                             if orientation != o && o != Orientation::Unknown {
@@ -200,6 +249,21 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                                 gfx.flip_screen(o == Orientation::FaceDown).ok();
                                 kbd.flip_orientation(o == Orientation::FaceDown);
                             }
+                        }
+
+                        // only enable deep sleep if we're on battery power
+                        if vbus_state == IoxValue::Low {
+                            // this pushes the alarm date out by the deep sleep time horizon
+                            let rovers = rtc
+                                .set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC))
+                                .unwrap_or(0);
+                            if rovers > 1 {
+                                log::warn!(
+                                    "Rollover case for RTC not handled, wakeup will fail. rovers: {}",
+                                    rovers
+                                );
+                            }
+                            alarm_set = true;
                         }
                     }
                 }
@@ -215,7 +279,60 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                 if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
                     let k = char::from_u32(scalar.arg1 as u32).unwrap_or('\u{0000}');
                     if k == '⏰' {
-                        log::info!("rtc wakeup!");
+                        log::info!("Deep sleep trigger hit!");
+
+                        // ensure accelerometer interrupts are enabled, that's the primary source of waking
+                        if let Some(a) = &mut accel {
+                            accel_enable_int(a, &mut i2c, true).unwrap();
+                        }
+                        // turn off screen
+                        gfx.set_power(false).unwrap();
+
+                        let conn = xns
+                            .request_connection_blocking(susres::api::SERVER_NAME_SUSRES)
+                            .expect("Can't connect to SUSRES");
+                        match xous::send_message(
+                            conn,
+                            xous::Message::new_blocking_scalar(
+                                susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
+                                bao1x_hal_service::api::ClockOp::DeepSleep.to_usize().unwrap(),
+                                0,
+                                0,
+                                0,
+                            ),
+                        ) {
+                            Ok(xous::Result::Scalar1(result)) => {
+                                if result == 1 {
+                                    log::info!("Should be in deep sleep!");
+                                } else {
+                                    log::error!("Couldn't initiate deep sleep")
+                                }
+                            }
+                            _ => panic!("Couldn't send deep sleep message to susres"),
+                        }
+                    } else {
+                        // delegating this to here prevents the screen from glitching on
+                        // during wakeup due to RTC event
+                        if wfi_awaiting_keypress {
+                            // turn on screen
+                            gfx.set_power(true).unwrap();
+                            wfi_awaiting_keypress = false;
+                        }
+
+                        // only enable deep sleep if we're on battery power
+                        if vbus_state == IoxValue::Low {
+                            // this pushes the alarm date out by the deep sleep time horizon
+                            let rovers = rtc
+                                .set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC))
+                                .unwrap_or(0);
+                            if rovers > 1 {
+                                log::warn!(
+                                    "Rollover case for RTC not handled, wakeup will fail. rovers: {}",
+                                    rovers
+                                );
+                            }
+                            alarm_set = true;
+                        }
                     }
                 }
                 last_action_time_ms = tt.elapsed_ms();
