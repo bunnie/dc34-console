@@ -212,6 +212,12 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                 iox_hal.update_irq_pin(POWER_MANAGER_SERVER, vbus_irq_index, Some(!vbus_state), None);
             }
             PowerManagerOp::KeyPress => {
+                if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
+                    let k = char::from_u32(scalar.arg1 as u32).unwrap_or('\u{0000}');
+                    if k == '⏰' {
+                        log::info!("rtc wakeup!");
+                    }
+                }
                 last_action_time_ms = tt.elapsed_ms();
             }
             PowerManagerOp::SetFadeMode => {

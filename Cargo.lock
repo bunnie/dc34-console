@@ -192,6 +192,7 @@ dependencies = [
  "bitbybit",
  "bitfield",
  "bytemuck",
+ "chrono",
  "flatipc 0.1.0",
  "flatipc-derive 0.1.2",
  "log",

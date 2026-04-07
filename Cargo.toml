@@ -107,6 +107,8 @@ hosted-baosec = [
     "bao1x-hal/hosted-baosec",
 ]
 owc-test = ["keystore/owc-inc"]
+# gate for misc test routines
+misc-test = []
 
 # Activating this makes this crate *try* to grab the DUART. To improve its odds
 # of winning the race, shift its position to first in the list in the PIDs to be

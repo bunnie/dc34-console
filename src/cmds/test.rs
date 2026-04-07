@@ -1,4 +1,5 @@
 use String;
+#[cfg(feature = "misc-test")]
 use bao1x_api::IoSetup;
 use dc34_api::*;
 use num_traits::ToPrimitive;
@@ -116,6 +117,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     _ => panic!("Couldn't send deep sleep message to susres"),
                 }
             }
+            #[cfg(feature = "misc-test")]
             "wfi" => {
                 let gfx = ux_api::service::gfx::Gfx::new(&_env.xns).unwrap();
                 log::info!("turn off display");
@@ -165,6 +167,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     log::info!("{}", line);
                 }
             }
+            #[cfg(feature = "misc-test")]
             "qrshow" => {
                 // note that 40 bytes gives 320 bits which fits nicely into a version 3 code,
                 // which allows 4 pixels per module rendering.
@@ -185,6 +188,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                 let encoded = base45::encode(&test_data);
                 modals.show_notification("", Some(&encoded)).ok();
             }
+            #[cfg(feature = "misc-test")]
             "qrget" => {
                 let gfx = ux_api::service::gfx::Gfx::new(&_env.xns).unwrap();
                 match gfx.acquire_qr() {
@@ -208,6 +212,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     }
                 }
             }
+            #[cfg(feature = "misc-test")]
             "cam" => {
                 use bao1x_api::I2cApi;
                 let mut i2c = bao1x_hal::i2c::I2c::new();
@@ -226,7 +231,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     write!(ret, "Wrote {:x} into {:x}", data, adr).ok();
                 }
             }
-            #[cfg(feature = "oem-baosec-lite")]
+            #[cfg(feature = "misc-test")]
             "accel" => {
                 use std::time::{Duration, Instant};
 
@@ -292,6 +297,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     bao1x_hal::udma::Adc::raw_to_temp_celsius(raw_temp)
                 );
             }
+            #[cfg(feature = "misc-test")]
             "adc" => {
                 let iox = bao1x_api::IoxHal::new();
                 let adc = bao1x_hal_service::Adc::new();
@@ -332,6 +338,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     std::thread::sleep(std::time::Duration::from_millis(500));
                 }
             }
+            #[cfg(feature = "misc-test")]
             "autogamy" => {
                 let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
                 xous::send_message(
@@ -347,6 +354,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                 .ok();
                 log::info!("autogamy sent");
             }
+            #[cfg(feature = "misc-test")]
             "bt" => {
                 let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
                 if args.len() != 1 {
@@ -375,6 +383,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                 )
                 .ok();
             }
+            #[cfg(feature = "misc-test")]
             "mate" => {
                 let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
                 if args.len() != 1 {
@@ -405,6 +414,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                 )
                 .ok();
             }
+            #[cfg(feature = "misc-test")]
             "hue" => {
                 if args.len() != 1 {
                     write!(ret, "{}", "Usage: hue <val>").ok();
@@ -592,6 +602,17 @@ impl<'a> ShellCmdApi<'a> for Test {
                     log::info!("_|TT|_HW.PASS,_|TE|_");
                 } else {
                     log::info!("_|TT|_HW.FAIL,_|TE|_");
+                }
+            }
+            #[cfg(feature = "misc-test")]
+            "wup" => {
+                let rtc = bao1x_hal_service::Rtc::new();
+                use chrono::{Duration, Utc};
+                let rovers = rtc.set_wakeup(Utc::now() + Duration::seconds(30));
+                log::info!("{:?}", rovers);
+                for i in 0..30 {
+                    log::info!("waiting {}", i);
+                    _env.ticktimer.sleep_ms(1000).ok();
                 }
             }
             #[cfg(feature = "owc-test")]
