@@ -18,7 +18,7 @@ bao1x-hal = { features = [
 bao1x-api = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 bao1x-hal-service = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 bao1x-emu = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
-usb-bao1x = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
+usb-bao1x = { git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683", features = ["bao1x", "board-baosec", "oem-baosec-lite"] }
 modals = { default-features = false, optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 ux-api = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
 pddb = { optional = true, git = "https://github.com/betrusted-io/xous-core", rev = "616bf65f6e379165464f50b1e79ec42aff77a683" }
@@ -70,6 +70,7 @@ ux-api = { path = "../xous-core/libs/ux-api" }
 bio-lib = { path = "../xous-core/libs/bio-lib" }
 xous-api-susres = { path = "../xous-core/api/xous-api-susres" }
 keystore = {path = "../xous-core/services/keystore" }
+usb-bao1x = { path = "../xous-core/services/usb-bao1x" }
 
 [patch.crates-io.aes]
 path = "../xous-core/services/aes"

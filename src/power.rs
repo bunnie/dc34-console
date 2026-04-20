@@ -4,8 +4,8 @@ use std::sync::{
 };
 
 use bao1x_api::{IoIrq, IoxHal, IoxValue};
-use bao1x_hal::i2c::I2c;
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
+use bao1x_hal::{axp2101::VbusIrq, i2c::I2c};
 use chrono::Utc;
 use dc34_api::*;
 use num_traits::ToPrimitive;
@@ -34,47 +34,85 @@ const DEEP_SLEEP_SEC: i64 = 5 * 60; // 15 * 60; // 15 minutes of total quiescenc
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
 
-    accel.write_register(i2c, regs::CTRL_REG5, 0x08)?;
+    // Latch both INT1 (motion) and INT2 (orientation) until their SRC regs are read
+    // 0x08 = LIR_INT1, 0x02 = LIR_INT2
+    accel.write_register(i2c, regs::CTRL_REG5, 0x08 | 0x02)?;
 
-    // INT1_CFG: OR combination, all axes high/low enabled
+    // -- INT1: motion detection -----------------------------------------------
+    // OR combination, all axes high/low enabled
     accel.write_register(i2c, regs::INT1_CFG, 0x7F)?;
-    // INT1_THS: threshold 16mg/LSB at ±2g
-    accel.write_register(i2c, regs::INT1_THS, 10)?;
-    // INT1_DURATION: 0 (no minimum duration)
-    accel.write_register(i2c, regs::INT1_DURATION, 1)?;
-    // set polarity
-    accel.set_interrupt_polarity(i2c, bao1x_hal::lis2dh12::InterruptPolarity::ActiveHigh)?;
-    // CTRL_REG3: Enable IA1 on INT1 pin
-    accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40)?;
 
-    // enable high pass filtering
+    // -- sensitivity tuning for wake ------------------------------------------
+    /* // original tuning - fairly sensitive to taps, but misses longer, slower motions
+    // Threshold: 16mg/LSB at ±2g - low enough to catch gentle movement
+    accel.write_register(i2c, regs::INT1_THS, 10)?;
+    // Minimum duration before interrupt fires
+    accel.write_register(i2c, regs::INT1_DURATION, 1)?;
+    */
+
+    // --- newer tuning ---
+    // At 25Hz, DURATION=2 → 80ms minimum - should be better at rejecting
+    // brief non-walking transients without missing steps
+    // CTRL_REG1: 25Hz, normal mode, XYZ enabled
+    // [7:4]=0011 (25Hz), [2:0]=111
+    accel.write_register(i2c, regs::CTRL_REG1, 0x37)?;
+    accel.write_register(i2c, regs::INT1_THS, 20)?;
+    accel.write_register(i2c, regs::INT1_DURATION, 2)?;
+    /*
+    Tuning loop:
+      Start at THS=20, DUR=2
+      - If breathing triggers → raise THS to 22, not duration
+      - If slow walking misses → lower THS to 18 first, then DUR
+      - If chair creaks/fabric rustle triggers it → raise DUR to 4–5, not THS
+    Threshold controls amplitude sensitivity, duration controls how sustained the motion
+    needs to be.
+    */
+    // -- end sensitivity tuning for wake --------------------------------------
+
+    // -- INT2: 6D orientation detection ---------------------------------------
+    // AOI=0, 6D=1, all six directions enabled - fires on any face change
+    accel.write_register(i2c, regs::INT2_CFG, 0x7F)?;
+    // ~500mg threshold - high enough to stay stable while wearing, low enough
+    // to detect a deliberate flip. Tune between 0x10 (250mg) and 0x30 (750mg).
+    accel.write_register(i2c, regs::INT2_THS, 0x20)?;
+    // Small debounce: at 100Hz, value=2 → 20ms minimum hold before triggering.
+    // Prevents a mid-flip transient from double-firing.
+    accel.write_register(i2c, regs::INT2_DURATION, 2)?;
+
+    // -- Shared config ---------------------------------------------------------
+    accel.set_interrupt_polarity(i2c, bao1x_hal::lis2dh12::InterruptPolarity::ActiveHigh)?;
+
+    // CTRL_REG2: HPF enabled for INT1 only (HPEN1=1, HPEN2=0).
+    // INT2/6D intentionally gets raw gravity - that's its reference signal.
     accel.write_register(i2c, regs::CTRL_REG2, 0b00_00_0001)?;
+    // Read REFERENCE to reset the HPF and zero it against current orientation
     accel.read_register(i2c, regs::REFERENCE)?;
 
-    // Wait a bit for new samples
-    // std::thread::sleep(Duration::from_millis(150));
+    // CTRL_REG3: route both IA1 (motion) and IA2 (orientation) to INT1 pin
+    // bit6=I1_IA1, bit5=I1_IA2
+    accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40 | 0x20)?;
 
-    // Clear any pending interrupt by reading INT1_SRC
+    // Clear any pending interrupts on both engines
     let _ = accel.read_register(i2c, regs::INT1_SRC)?;
-
-    // Check if interrupt is active
-    // let src = accel.read_register(i2c, regs::INT1_SRC)?;
-    // let triggered = (src & 0x40) != 0;
-    // log::info!("debug_test_int1_simple: INT1_SRC = 0x{:02X}, triggered = {}", src, triggered);
+    let _ = accel.read_register(i2c, regs::INT2_SRC)?;
 
     Ok(())
 }
 
 fn accel_enable_int(accel: &mut Lis2dh12, i2c: &mut I2c, enable: bool) -> Result<(), xous::Error> {
-    // Clear any pending interrupt by reading INT1_SRC
+    // Clear any pending interrupts on both engines
     let _ = accel.read_register(i2c, regs::INT1_SRC)?;
-
+    let _ = accel.read_register(i2c, regs::INT2_SRC)?;
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
     if enable {
-        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40)?;
+        log::info!("enable accel");
+        // bit6=I1_IA1 (motion), bit5=I1_IA2 (orientation)
+        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40 | 0x20)?;
         accel.reset_highpass(i2c)?;
     } else {
-        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 & !0x40)?;
+        // always allow orientation interrupts; disable motion
+        log::info!("disable accel");
+        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 & !(0x40/* | 0x20 */))?;
     }
     Ok(())
 }
@@ -107,8 +145,6 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
     let mut accel = Lis2dh12::new(&mut i2c).ok();
     if let Some(a) = &mut accel {
         setup_accel(a, &mut i2c).unwrap();
-        // enable the interrupts on boot
-        accel_enable_int(a, &mut i2c, true).unwrap();
     } else {
         log::warn!("No accelerometer found!");
     }
@@ -131,7 +167,6 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
 
     let mut orientation = Orientation::FaceUp;
     if let Some(a) = accel.as_mut() {
-        log::info!("Accelerometer interrupt enabled");
         let _ = iox_hal.set_irq_pin(
             bao1x_api::IoxPort::PC,
             15,
@@ -139,6 +174,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
             POWER_MANAGER_SERVER,
             PowerManagerOp::MotionIrq.to_usize().unwrap(),
         );
+        log::info!("Accelerometer interrupt pin setup");
         if let Ok(o) = a.get_orientation(&mut i2c) {
             orientation = o;
         }
@@ -172,7 +208,9 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
         }
     });
 
-    let mut pwr_mgr_enabled = true;
+    let usb = usb_bao1x::UsbHid::new();
+
+    let mut pwr_mgr_enabled = false;
     let mut wfi_awaiting_keypress = false;
     let mut idle_sec = WFI_IDLE_SEC_INIT;
 
@@ -233,24 +271,12 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
             }
             PowerManagerOp::MotionIrq => {
                 if let Some(a) = &mut accel {
-                    let source = a.read_int1_source(&mut i2c).unwrap();
-                    if source.active {
-                        /*
-                        log::debug!(
-                            "Motion confirmed! {:?} {:?}",
-                            source,
-                            a.read_accel_mg(&mut i2c).unwrap()
-                        ); */
+                    let int1_src = a.read_int1_source(&mut i2c).unwrap();
+                    // must read to clear any pending interrupt
+                    let _int2_src = a.read_int2_source(&mut i2c).unwrap();
+                    if int1_src.active {
+                        /* log::info!("Motion confirmed! {:?}", a.read_accel_mg(&mut i2c).unwrap()); */
                         a.reset_highpass(&mut i2c).unwrap();
-                        if let Ok(o) = a.get_orientation(&mut i2c) {
-                            if orientation != o && o != Orientation::Unknown {
-                                log::debug!("New orientation: {:?}", o);
-                                orientation = o;
-                                gfx.flip_screen(o == Orientation::FaceDown).ok();
-                                kbd.flip_orientation(o == Orientation::FaceDown);
-                            }
-                        }
-
                         // only enable deep sleep if we're on battery power
                         if vbus_state == IoxValue::Low {
                             // this pushes the alarm date out by the deep sleep time horizon
@@ -266,6 +292,16 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                             alarm_set = true;
                         }
                     }
+                    // always check this in both interrupt cases
+                    if let Ok(o) = a.get_orientation(&mut i2c) {
+                        if orientation != o && o != Orientation::Unknown {
+                            log::info!("New orientation: {:?}", o);
+                            orientation = o;
+                            gfx.flip_screen(o == Orientation::FaceDown).ok();
+                            kbd.flip_orientation(o == Orientation::FaceDown);
+                            kbd.inject_key('🔁');
+                        }
+                    }
                 }
             }
             PowerManagerOp::VbusIrq => {
@@ -274,6 +310,19 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                 plugged_in.store(vbus_state == IoxValue::High, Ordering::SeqCst);
                 // flip the edge trigger to opposite the current state
                 iox_hal.update_irq_pin(POWER_MANAGER_SERVER, vbus_irq_index, Some(!vbus_state), None);
+
+                // notify the USB stack of state changes
+                xous::send_message(
+                    usb.cid(),
+                    xous::Message::new_blocking_scalar(
+                        usb_bao1x::api::Opcode::PmicIrq.to_usize().unwrap(),
+                        (if vbus_state == IoxValue::High { VbusIrq::Insert } else { VbusIrq::Remove }).into(),
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                .ok();
             }
             PowerManagerOp::KeyPress => {
                 if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
@@ -288,6 +337,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                         // turn off screen
                         gfx.set_power(false).unwrap();
 
+                        // TODO: wrap this in something more ergonomic
                         let conn = xns
                             .request_connection_blocking(susres::api::SERVER_NAME_SUSRES)
                             .expect("Can't connect to SUSRES");
@@ -310,6 +360,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                             }
                             _ => panic!("Couldn't send deep sleep message to susres"),
                         }
+                        // -- Execution should have diverged here - system is off --
                     } else {
                         // delegating this to here prevents the screen from glitching on
                         // during wakeup due to RTC event
@@ -333,6 +384,9 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                             }
                             alarm_set = true;
                         }
+                    }
+                    if k == '🔁' {
+                        log::info!("tilt keep-on");
                     }
                 }
                 last_action_time_ms = tt.elapsed_ms();
@@ -378,6 +432,24 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                         } else {
                             0
                         };
+                }
+            }
+            // system has powered on, enable interrupts & management
+            PowerManagerOp::Boot => {
+                if let Some(_scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    pwr_mgr_enabled = true;
+                    // set initial orientation
+                    if let Some(a) = accel.as_mut() {
+                        if let Ok(o) = a.get_orientation(&mut i2c) {
+                            log::info!("Initial orientation: {:?}", o);
+                            orientation = o;
+                            gfx.flip_screen(o == Orientation::FaceDown).ok();
+                            kbd.flip_orientation(o == Orientation::FaceDown);
+                        }
+
+                        // enable the interrupts on boot
+                        accel_enable_int(a, &mut i2c, true).unwrap();
+                    }
                 }
             }
             PowerManagerOp::Invalid => {

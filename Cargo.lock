@@ -2062,14 +2062,13 @@ dependencies = [
 [[package]]
 name = "usb-bao1x"
 version = "0.1.0"
-source = "git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683#616bf65f6e379165464f50b1e79ec42aff77a683"
 dependencies = [
  "bao1x-api",
- "bao1x-emu 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "bao1x-emu 0.1.0",
  "bao1x-hal",
  "bao1x-hal-service",
  "frunk_core",
- "locales 0.1.0 (git+https://github.com/betrusted-io/xous-core?rev=616bf65f6e379165464f50b1e79ec42aff77a683)",
+ "locales 0.1.0",
  "log",
  "num-derive",
  "num-traits",
