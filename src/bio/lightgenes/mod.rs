@@ -151,24 +151,43 @@ impl Lightgenes {
                     // don't overflow the fifo
                 }
             }
+            self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0000_0000);
         } else {
             // do nothing, we haven't been initialized
         }
     }
 
+    pub fn jack_eyes(&mut self, flash: bool) {
+        while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
+            // don't overflow the fifo
+        }
+        if flash {
+            self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x2000_0000);
+        } else {
+            self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x1000_0000);
+        }
+        self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0000_0000);
+    }
+
+    /// Pause now has the behavior of automatically un-pausing. The purpose of this
+    /// is to briefly stop rendering while the device goes between clock modes.
     pub fn pause_rendering(&mut self) {
+        // log::info!("pause!!!");
         while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
             // don't overflow the fifo
         }
         self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x8000_0000);
+        self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0000_0000);
     }
 
+    /*
     pub fn resume_rendering(&mut self) {
         while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
             // don't overflow the fifo
         }
         self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x4000_0000);
     }
+    */
 
     #[allow(dead_code)]
     pub fn map(x: i32, in_min: i32, in_max: i32, out_min: i32, out_max: i32) -> Option<i32> {

@@ -36,7 +36,8 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
 
     // Latch both INT1 (motion) and INT2 (orientation) until their SRC regs are read
     // 0x08 = LIR_INT1, 0x02 = LIR_INT2
-    accel.write_register(i2c, regs::CTRL_REG5, 0x08 | 0x02)?;
+    // orientation is level-triggered so no need to latch it
+    accel.write_register(i2c, regs::CTRL_REG5, 0x08 /* | 0x02 */)?;
 
     // -- INT1: motion detection -----------------------------------------------
     // OR combination, all axes high/low enabled
@@ -70,14 +71,14 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     // -- end sensitivity tuning for wake --------------------------------------
 
     // -- INT2: 6D orientation detection ---------------------------------------
-    // AOI=0, 6D=1, all six directions enabled - fires on any face change
+    // AOI=0, 6D=1, all six directions enabled - fires on any face change - narrowed on state change
     accel.write_register(i2c, regs::INT2_CFG, 0x7F)?;
     // ~500mg threshold - high enough to stay stable while wearing, low enough
     // to detect a deliberate flip. Tune between 0x10 (250mg) and 0x30 (750mg).
-    accel.write_register(i2c, regs::INT2_THS, 0x20)?;
-    // Small debounce: at 100Hz, value=2 → 20ms minimum hold before triggering.
+    accel.write_register(i2c, regs::INT2_THS, 0x30)?;
+    // Small debounce: at 25Hz, value=8 -> 320ms minimum hold before triggering.
     // Prevents a mid-flip transient from double-firing.
-    accel.write_register(i2c, regs::INT2_DURATION, 2)?;
+    accel.write_register(i2c, regs::INT2_DURATION, 8)?;
 
     // -- Shared config ---------------------------------------------------------
     accel.set_interrupt_polarity(i2c, bao1x_hal::lis2dh12::InterruptPolarity::ActiveHigh)?;
@@ -90,7 +91,9 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
 
     // CTRL_REG3: route both IA1 (motion) and IA2 (orientation) to INT1 pin
     // bit6=I1_IA1, bit5=I1_IA2
-    accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40 | 0x20)?;
+    // accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40 | 0x20)?;
+    // initially, only enable orientation accelerometer
+    accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x20)?;
 
     // Clear any pending interrupts on both engines
     let _ = accel.read_register(i2c, regs::INT1_SRC)?;
@@ -105,13 +108,16 @@ fn accel_enable_int(accel: &mut Lis2dh12, i2c: &mut I2c, enable: bool) -> Result
     let _ = accel.read_register(i2c, regs::INT2_SRC)?;
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
     if enable {
-        log::info!("enable accel");
+        log::debug!("enable motion accel");
         // bit6=I1_IA1 (motion), bit5=I1_IA2 (orientation)
+        // just enable the motion interrupt but don't arm the tilt (otherwise it'll trigger immediately and
+        // wake us up)
         accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x40 | 0x20)?;
         accel.reset_highpass(i2c)?;
     } else {
         // always allow orientation interrupts; disable motion
-        log::info!("disable accel");
+        log::debug!("disable motion accel");
+        accel.write_register(i2c, regs::INT2_CFG, 0x7F)?; // re-arm all faces, we're awake and want to get orientation
         accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 & !(0x40/* | 0x20 */))?;
     }
     Ok(())
@@ -209,10 +215,13 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
     });
 
     let usb = usb_bao1x::UsbHid::new();
+    let led_conn = xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
 
     let mut pwr_mgr_enabled = false;
     let mut wfi_awaiting_keypress = false;
     let mut idle_sec = WFI_IDLE_SEC_INIT;
+    let mut force_wfi = false;
+    let mut force_deep_sleep = false;
 
     let mut last_action_time_ms = tt.elapsed_ms();
     let mut msg_opt = None;
@@ -254,7 +263,9 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                 }
                 if !wfi_awaiting_keypress && (now_ms - last_action_time_ms > idle_sec * 1000)
                     || wfi_awaiting_keypress && (now_ms - last_action_time_ms > MOTION_IRQ_MARGIN_MS)
+                    || force_wfi
                 {
+                    force_wfi = false; // always reset this here
                     gfx.set_power(false).unwrap();
                     wfi_awaiting_keypress = true; // this tells the KeyPress handler we have to turn on the screen
 
@@ -271,10 +282,78 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
             }
             PowerManagerOp::MotionIrq => {
                 if let Some(a) = &mut accel {
-                    let int1_src = a.read_int1_source(&mut i2c).unwrap();
+                    /*
+                    // -- Read raw register values BEFORE clearing ----------------------
+                    let int2_src_raw = a.read_register(&mut i2c, regs::INT2_SRC).unwrap();
+                    let int1_src_raw = a.read_register(&mut i2c, regs::INT1_SRC).unwrap();
+
+                    log::info!(
+                        "INT1_SRC raw: 0x{:02X}  (active={}  XL={} XH={} YL={} YH={} ZL={} ZH={})",
+                        int1_src_raw,
+                        (int1_src_raw & 0x40) != 0,
+                        (int1_src_raw & 0x01) != 0,
+                        (int1_src_raw & 0x02) != 0,
+                        (int1_src_raw & 0x04) != 0,
+                        (int1_src_raw & 0x08) != 0,
+                        (int1_src_raw & 0x10) != 0,
+                        (int1_src_raw & 0x20) != 0,
+                    );
+                    log::info!(
+                        "INT2_SRC raw: 0x{:02X}  (active={}  XL={} XH={} YL={} YH={} ZL={} ZH={})",
+                        int2_src_raw,
+                        (int2_src_raw & 0x40) != 0,
+                        (int2_src_raw & 0x01) != 0,
+                        (int2_src_raw & 0x02) != 0,
+                        (int2_src_raw & 0x04) != 0,
+                        (int2_src_raw & 0x08) != 0,
+                        (int2_src_raw & 0x10) != 0,
+                        (int2_src_raw & 0x20) != 0,
+                    );
+
+                    // -- Immediately re-read INT2_SRC to see if latch actually cleared --
+                    // If this is still non-zero, the condition is re-asserting instantly
+                    let int2_src_reread = a.read_register(&mut i2c, regs::INT2_SRC).unwrap();
+                    log::info!("INT2_SRC re-read (should be 0x00 if cleared): 0x{:02X}", int2_src_reread);
+
+                    // -- Raw accel values to see what gravity looks like right now ------
+                    if let Ok((x, y, z)) = a.read_accel_mg(&mut i2c) {
+                        log::info!(
+                            "Accel mg: x={:6}  y={:6}  z={:6}  magnitude~={:6}",
+                            x,
+                            y,
+                            z,
+                            // rough integer magnitude for sanity check
+                            (((x * x + y * y + z * z) as f32).sqrt()) as i32,
+                        );
+                    }
+
+                    // -- Config register dump - verify nothing has drifted -------------
+                    let ctrl_reg2 = a.read_register(&mut i2c, regs::CTRL_REG2).unwrap();
+                    let ctrl_reg3 = a.read_register(&mut i2c, regs::CTRL_REG3).unwrap();
+                    let ctrl_reg5 = a.read_register(&mut i2c, regs::CTRL_REG5).unwrap();
+                    let int2_cfg = a.read_register(&mut i2c, regs::INT2_CFG).unwrap();
+                    let int2_ths = a.read_register(&mut i2c, regs::INT2_THS).unwrap();
+                    let int2_dur = a.read_register(&mut i2c, regs::INT2_DURATION).unwrap();
+                    log::info!(
+                        "CTRL_REG2=0x{:02X} CTRL_REG3=0x{:02X} CTRL_REG5=0x{:02X}",
+                        ctrl_reg2,
+                        ctrl_reg3,
+                        ctrl_reg5
+                    );
+                    log::info!(
+                        "INT2_CFG=0x{:02X} INT2_THS=0x{:02X} INT2_DUR=0x{:02X}",
+                        int2_cfg,
+                        int2_ths,
+                        int2_dur
+                    );
+                    */
+
                     // must read to clear any pending interrupt
-                    let _int2_src = a.read_int2_source(&mut i2c).unwrap();
+                    let int1_src = a.read_int1_source(&mut i2c).unwrap();
+                    let int2_src_raw = a.read_register(&mut i2c, regs::INT2_SRC).unwrap();
+
                     if int1_src.active {
+                        log::debug!("motion");
                         /* log::info!("Motion confirmed! {:?}", a.read_accel_mg(&mut i2c).unwrap()); */
                         a.reset_highpass(&mut i2c).unwrap();
                         // only enable deep sleep if we're on battery power
@@ -292,15 +371,54 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                             alarm_set = true;
                         }
                     }
-                    // always check this in both interrupt cases
-                    if let Ok(o) = a.get_orientation(&mut i2c) {
-                        if orientation != o && o != Orientation::Unknown {
-                            log::info!("New orientation: {:?}", o);
-                            orientation = o;
-                            gfx.flip_screen(o == Orientation::FaceDown).ok();
-                            kbd.flip_orientation(o == Orientation::FaceDown);
-                            kbd.inject_key('🔁');
+                    if (int2_src_raw & 0x40) != 0 {
+                        // Determine which face just became dominant
+                        let active_face_bit: u8 = int2_src_raw & 0x3F; // XL/XH/YL/YH/ZL/ZH
+
+                        // Re-enable all faces EXCEPT the one currently active.
+                        // This makes the engine fire only on a *transition away* from
+                        // the current face, not continuously while sitting on it.
+                        let new_cfg: u8 = 0x40          // AOI=0, 6D=1 - keep 6D mode
+                                        | 0x3F          // all directions
+                                        & !active_face_bit; // mask out the currently-satisfied direction
+                        a.write_register(&mut i2c, regs::INT2_CFG, new_cfg).unwrap();
+                        log::debug!(
+                            "INT2_SRC=0x{:02X}, masking face bit 0x{:02X}, new INT2_CFG=0x{:02X}",
+                            int2_src_raw,
+                            active_face_bit,
+                            new_cfg
+                        );
+
+                        if let Ok(o) = a.get_orientation(&mut i2c) {
+                            log::debug!("tilt: {:?}", o);
+                            if orientation != o && o != Orientation::Unknown {
+                                log::info!("New orientation: {:?}", o);
+                                orientation = o;
+                                gfx.flip_screen(o == Orientation::FaceDown).ok();
+                                kbd.flip_orientation(o == Orientation::FaceDown);
+                                // adjust the "eyes" effect
+                                xous::send_message(
+                                    led_conn,
+                                    xous::Message::new_scalar(
+                                        LedManagerOp::JackEyes.to_usize().unwrap(),
+                                        if orientation == Orientation::FaceDown { 1 } else { 0 },
+                                        0,
+                                        0,
+                                        0,
+                                    ),
+                                )
+                                .ok();
+
+                                if orientation == Orientation::FaceDown {
+                                    kbd.inject_key('🔽');
+                                } else {
+                                    kbd.inject_key('🔼');
+                                }
+                            }
                         }
+                    }
+                    if !(int1_src.active || (int2_src_raw & 0x40) != 0) {
+                        log::warn!("*** NEITHER ***");
                     }
                 }
             }
@@ -327,7 +445,8 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
             PowerManagerOp::KeyPress => {
                 if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
                     let k = char::from_u32(scalar.arg1 as u32).unwrap_or('\u{0000}');
-                    if k == '⏰' {
+                    if k == '⏰' || force_deep_sleep {
+                        force_deep_sleep = false; // always reset here
                         log::info!("Deep sleep trigger hit!");
 
                         // ensure accelerometer interrupts are enabled, that's the primary source of waking
@@ -448,9 +567,15 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                         }
 
                         // enable the interrupts on boot
-                        accel_enable_int(a, &mut i2c, true).unwrap();
+                        accel_enable_int(a, &mut i2c, false).unwrap();
                     }
                 }
+            }
+            PowerManagerOp::ForceDeepSleep => {
+                force_deep_sleep = true;
+            }
+            PowerManagerOp::ForceWfi => {
+                force_wfi = true;
             }
             PowerManagerOp::Invalid => {
                 log::error!("Invalid power manager operation: {:?}", opcode);

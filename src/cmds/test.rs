@@ -7,7 +7,15 @@ use num_traits::ToPrimitive;
 use crate::{CommonEnv, ShellCmdApi};
 
 #[derive(Debug)]
-pub struct Test {}
+pub struct Test {
+    pwr_mgr: xous::CID,
+}
+impl Test {
+    pub fn new() -> Self {
+        let xns = xous_names::XousNames::new().unwrap();
+        Self { pwr_mgr: xns.request_connection_blocking(POWER_MANAGER_SERVER).unwrap() }
+    }
+}
 
 impl<'a> ShellCmdApi<'a> for Test {
     cmd_api!(test);
@@ -72,6 +80,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                 let local_now = Local::now();
                 log::info!("Local time: {}", local_now.format("%Y-%m-%d %H:%M:%S %Z"));
             }
+            #[cfg(feature = "misc-test")]
             "shipmode" => {
                 use bao1x_hal::i2c::I2c;
                 let mut i2c = I2c::new();
@@ -86,50 +95,20 @@ impl<'a> ShellCmdApi<'a> for Test {
                 axp2101.powerdown(&mut i2c).ok();
                 log::info!("sent shutdown to axp2101");
             }
-            "deepsleep" => {
-                let gfx = ux_api::service::gfx::Gfx::new(&_env.xns).unwrap();
-                log::info!("turn off display");
-                gfx.set_power(false).unwrap();
-                log::info!("display off");
-                use num_traits::*;
-                // monkey patch over the standard xous IP
-                let conn = _env
-                    .xns
-                    .request_connection_blocking(susres::api::SERVER_NAME_SUSRES)
-                    .expect("Can't connect to SUSRES");
-                match xous::send_message(
-                    conn,
-                    xous::Message::new_blocking_scalar(
-                        susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
-                        bao1x_hal_service::api::ClockOp::DeepSleep.to_usize().unwrap(),
-                        0,
-                        0,
-                        0,
-                    ),
-                ) {
-                    Ok(xous::Result::Scalar1(result)) => {
-                        if result == 1 {
-                            log::info!("Should be in deep sleep!");
-                        } else {
-                            log::error!("Couldn't initiate deep sleep")
-                        }
-                    }
-                    _ => panic!("Couldn't send deep sleep message to susres"),
-                }
-            }
-            #[cfg(feature = "misc-test")]
             "wfi" => {
-                let gfx = ux_api::service::gfx::Gfx::new(&_env.xns).unwrap();
-                log::info!("turn off display");
-                gfx.set_power(false).unwrap();
-                log::info!("display off");
-                let susres = susres::Susres::new_without_hook(&_env.xns).unwrap();
-                log::info!("initiating wfi from test shell...");
-                susres.initiate_suspend().unwrap();
-                log::info!("waiting after WFI return (system will be in WFI)");
-                _env.ticktimer.sleep_ms(100).ok();
-                log::info!("turn on display");
-                gfx.set_power(true).unwrap();
+                xous::send_message(
+                    self.pwr_mgr,
+                    xous::Message::new_scalar(PowerManagerOp::ForceWfi.to_usize().unwrap(), 0, 0, 0, 0),
+                )
+                .ok();
+            }
+            "deep" => {
+                xous::send_message(
+                    self.pwr_mgr,
+                    xous::Message::new_scalar(PowerManagerOp::ForceDeepSleep.to_usize().unwrap(), 0, 0, 0, 0),
+                )
+                .ok();
+                log::info!("press any key now to trigger deep sleep");
             }
             "proc" => {
                 // hard coded - debug feature - if the platform ABI changes its name or opcode map this
@@ -450,6 +429,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     .ok();
                 }
             }
+            #[cfg(feature = "misc-test")]
             "reset" => {
                 let pddb = pddb::Pddb::new();
                 pddb.delete_dict(DC34_DICT, None).ok();
@@ -490,6 +470,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                     }
                 }
             }
+            #[cfg(feature = "misc-test")]
             "fakek0" => {
                 if get_k0().is_none() {
                     save_k0(&[1u8; 32]);

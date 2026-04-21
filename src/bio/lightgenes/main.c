@@ -57,6 +57,8 @@ static uint32_t time_ms = 0;
 static genome diploid;
 static uint32_t reftime_lg = 0;
 static uint8_t shift = 5;  // overall dimming for power savings
+static uint8_t shift_eyes = 3; // less shift for the eyes as they are dimmer
+static uint32_t jack_eyes = 0; // whether or not to flash the jack's eyes
 
 static void ledSetRGB(uint32_t *led_buf, int i, uint8_t r, uint8_t g, uint8_t b, uint32_t shift) {
   led_buf[i] = ((((uint32_t) g << 16) >> shift) & 0xFF0000)
@@ -225,13 +227,14 @@ static void do_lightgene(uint32_t actual_leds) {
   fp_t time, space;
   fp_t spacetime;
   uint8_t overrideHSV = 0;
-  uint8_t overshift;
   uint32_t hue_rate;
   uint8_t hue_dir;
   uint32_t hue_temp;
+  RgbColor eye_left = {0, 0, 0};
+  RgbColor eye_right = {0, 0, 0};
   // diploid is static to this function and set when the lightgene is selected
 
-  tau = (uint32_t) map(diploid.cd_rate, 0, 255, 70, 800);
+  tau = (uint32_t) map(diploid.cd_rate, 0, 255, 60, 700);
   curtime = time_ms / 10;
   if( (curtime - reftime_lg) > tau )
     reftime_lg = curtime;
@@ -318,17 +321,35 @@ static void do_lightgene(uint32_t actual_leds) {
       // add some nonlinearity to tune down the total brightness - saves battery life while improving aesthetics
       hsvC.v = (uint8_t) (((uint32_t) hsvC.v * (uint32_t) hsvC.v) >> 8 & 0xFF);
 
+    rgbC = HsvToRgb(hsvC);
+
     // now compute lin effect, but only if the threshold is met
     if( diploid.lin < 88 ) {  // rare variant after a summing expression ~3% chance
       shoot = (loop / 2) % count;
       if( shoot == i ) {
 	       overrideHSV = 1;
       }
+
+      if (loop < count / 2) {
+        eye_left.r = 192;
+        eye_left.g = 192;
+        eye_left.b = 192;
+      } else {
+        eye_right.r = 192;
+        eye_right.g = 192;
+        eye_right.b = 192;
+      }
+    } else {
+      if (i == 0) {
+        eye_left = rgbC;
+      }
+      if (i == (count - LED_OFFSET) / 2) {
+        eye_right = rgbC;
+      }
     }
 
     // go from RGB to HSV for a particular pixel
     if( !overrideHSV ) {
-      rgbC = HsvToRgb(hsvC);
       ledSetRGB(fb, i + LED_OFFSET, rgbC.r, rgbC.g, rgbC.b, shift);
     } else {
       ledSetRGB(fb, i + LED_OFFSET, 192, 192, 192, shift);
@@ -336,8 +357,13 @@ static void do_lightgene(uint32_t actual_leds) {
   }
 
   // make sure the "eyes" are off in this mode to save power
-  ledSetRGB(fb, 0, 0, 0, 0, shift);
-  ledSetRGB(fb, 1, 0, 0, 0, shift);
+  if (jack_eyes == 0) {
+    ledSetRGB(fb, 0, 0, 0, 0, shift);
+    ledSetRGB(fb, 1, 0, 0, 0, shift);
+  } else {
+    ledSetRGB(fb, 0, eye_left.r, eye_left.g, eye_left.b, shift_eyes);
+    ledSetRGB(fb, 1, eye_right.r, eye_right.g, eye_right.b, shift_eyes);
+  }
 }
 
 void test_pattern(uint32_t actual_leds) {
@@ -357,7 +383,11 @@ void test_pattern(uint32_t actual_leds) {
     if( !light ) {
       ledSetRGB(fb, i, 0, 0, 0, shift);
     } else {
-      ledSetRGB(fb, i, 0x35, 0x35, 0x35, shift);
+      if (i >= 2) {
+        ledSetRGB(fb, i, 0x35, 0x35, 0x35, shift);
+      } else {
+        ledSetRGB(fb, i, 0x35, 0x35, 0x35, shift_eyes);
+      }
     }
   }
 }
@@ -389,15 +419,20 @@ void main(void) {
         while ((event_status() & fifo1_slot0_mask) != 0) {
             incoming = pop_fifo1();
             // modify gates
-            /*
             if ((incoming & 0x80000000) != 0) {
-              led_gate = 1;
+              // this is the number of loop iters to wait before resuming
+              // each loop is about 35ms
+              led_gate = 3;
               continue;
             }
-            if ((incoming & 0x40000000) != 0) {
+            if ((incoming & 0x20000000) != 0) {
+              jack_eyes = 1;
               continue;
-              led_gate = 0;
-            } */
+            }
+            if ((incoming & 0x10000000) != 0) {
+              jack_eyes = 0;
+              continue;
+            }
 
             // extract index & force it to be in-range
             index = (incoming >> 8) & 0xff;
@@ -425,6 +460,10 @@ void main(void) {
                 wait_quantum();
             }
             time_ms += 1;
+        }
+
+        if (led_gate > 0) {
+          led_gate --;
         }
     }
 }

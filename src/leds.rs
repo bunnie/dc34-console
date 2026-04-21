@@ -77,6 +77,16 @@ fn leds() {
                     lightgenes.express();
                 }
             }
+            LedManagerOp::JackEyes => {
+                if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
+                    lightgenes.jack_eyes(scalar.arg1 != 0);
+                }
+            }
+            LedManagerOp::Pause => {
+                if let Some(_scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    lightgenes.pause_rendering();
+                }
+            }
             LedManagerOp::Invalid => {
                 log::error!("Invalid LED manager operation: {:?}", opcode);
             }
