@@ -586,6 +586,12 @@ impl<'a> ShellCmdApi<'a> for Test {
                 }
             }
             #[cfg(feature = "misc-test")]
+            "wdt" => {
+                let mut wdt = bao1x_hal::wdt::Wdt::new();
+                wdt.enable((43750000 / 2) * 10, true);
+                log::info!("wdt enabled, 10 seconds to reboot?");
+            }
+            #[cfg(feature = "misc-test")]
             "wup" => {
                 let rtc = bao1x_hal_service::Rtc::new();
                 use chrono::{Duration, Utc};

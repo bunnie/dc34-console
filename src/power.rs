@@ -24,6 +24,7 @@ Goals:
 */
 
 const POWER_POLL_INTERVAL_MS: usize = 2500;
+const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 4;
 // this gives some margin for the keypress to "catch up" in case both motion and
 // keypress interrupts are simultaneously fired as a wakeup event
 const MOTION_IRQ_MARGIN_MS: u64 = 1000;
@@ -164,13 +165,6 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
     let kbd = bao1x_api::keyboard::Keyboard::new(&xns).unwrap();
     kbd.register_listener(POWER_MANAGER_SERVER, PowerManagerOp::KeyPress.to_u32().unwrap() as usize);
 
-    let rtc = bao1x_hal_service::Rtc::new();
-    let rovers = rtc.set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC)).unwrap_or(0);
-    if rovers > 1 {
-        log::warn!("Rollover case for RTC not handled, wakeup will fail. rovers: {}", rovers);
-    }
-    let mut alarm_set = true;
-
     let mut orientation = Orientation::FaceUp;
     if let Some(a) = accel.as_mut() {
         let _ = iox_hal.set_irq_pin(
@@ -217,6 +211,15 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
     let usb = usb_bao1x::UsbHid::new();
     let led_conn = xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
 
+    let rtc = bao1x_hal_service::Rtc::new();
+    let mut alarm_set = false;
+
+    let susres_conn =
+        xns.request_connection_blocking(susres::api::SERVER_NAME_SUSRES).expect("Can't connect to SUSRES");
+    let mut wdt = bao1x_hal::wdt::Wdt::new();
+    let pclk_ms = get_wdt_clk_ms(susres_conn);
+    wdt.enable((pclk_ms * WDT_FEED_INTERVAL_MS) as u32, true);
+
     let mut pwr_mgr_enabled = false;
     let mut wfi_awaiting_keypress = false;
     let mut idle_sec = WFI_IDLE_SEC_INIT;
@@ -246,7 +249,13 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                 }
             }
             PowerManagerOp::Poll => {
+                // keep the system alive
+                wdt.feed();
                 let now_ms = tt.elapsed_ms();
+                // check for consistency and fix any rollover/time-setting bugs
+                if last_action_time_ms > now_ms {
+                    last_action_time_ms = now_ms;
+                }
                 // disable power management if VBUS is plugged in
                 if !pwr_mgr_enabled || vbus_state == IoxValue::High {
                     // this effectively disables the if statement below by claiming
@@ -269,13 +278,14 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                     gfx.set_power(false).unwrap();
                     wfi_awaiting_keypress = true; // this tells the KeyPress handler we have to turn on the screen
 
+                    wdt.disable();
                     susres.initiate_suspend().unwrap();
                     // we idled, until a button was pressed
+                    wdt.enable((pclk_ms * WDT_FEED_INTERVAL_MS) as u32, true);
 
                     // brief delay for everything to catch up
                     tt.sleep_ms(100).ok();
                     last_action_time_ms = now_ms;
-
                     // screen wake-up is delegated to KeyPress handler -
                     // this prevents the screen glitch on RTC wake event
                 }
@@ -456,29 +466,19 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                         // turn off screen
                         gfx.set_power(false).unwrap();
 
-                        // TODO: wrap this in something more ergonomic
-                        let conn = xns
-                            .request_connection_blocking(susres::api::SERVER_NAME_SUSRES)
-                            .expect("Can't connect to SUSRES");
-                        match xous::send_message(
-                            conn,
-                            xous::Message::new_blocking_scalar(
+                        wdt.disable();
+                        xous::send_message(
+                            susres_conn,
+                            xous::Message::new_scalar(
                                 susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
                                 bao1x_hal_service::api::ClockOp::DeepSleep.to_usize().unwrap(),
                                 0,
                                 0,
                                 0,
                             ),
-                        ) {
-                            Ok(xous::Result::Scalar1(result)) => {
-                                if result == 1 {
-                                    log::info!("Should be in deep sleep!");
-                                } else {
-                                    log::error!("Couldn't initiate deep sleep")
-                                }
-                            }
-                            _ => panic!("Couldn't send deep sleep message to susres"),
-                        }
+                        )
+                        .ok();
+                        log::error!("should have gone to deep sleep");
                         // -- Execution should have diverged here - system is off --
                     } else {
                         // delegating this to here prevents the screen from glitching on
@@ -488,6 +488,9 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                             gfx.set_power(true).unwrap();
                             wfi_awaiting_keypress = false;
                         }
+
+                        // update the vbus state in case there was noise or chatter
+                        vbus_state = iox.get_gpio_pin_value(vbus_io.0, vbus_io.1);
 
                         // only enable deep sleep if we're on battery power
                         if vbus_state == IoxValue::Low {
@@ -557,6 +560,17 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
             PowerManagerOp::Boot => {
                 if let Some(_scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
                     pwr_mgr_enabled = true;
+
+                    let rovers =
+                        rtc.set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC)).unwrap_or(0);
+                    if rovers > 1 {
+                        log::warn!("Rollover case for RTC not handled, wakeup will fail. rovers: {}", rovers);
+                    }
+                    alarm_set = true;
+
+                    // check ground truth now that we're settled
+                    vbus_state = iox.get_gpio_pin_value(vbus_io.0, vbus_io.1);
+
                     // set initial orientation
                     if let Some(a) = accel.as_mut() {
                         if let Ok(o) = a.get_orientation(&mut i2c) {
@@ -582,4 +596,24 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
             }
         }
     }
+}
+
+// returns a multiplier suitable for multiplying by the WDT_FEED_INTERVAL_MS
+// to arrive at the correct timeout
+fn get_wdt_clk_ms(susres_conn: xous::CID) -> usize {
+    let pclk_ms = if let Ok(xous::Result::Scalar1(pclk)) = xous::send_message(
+        susres_conn,
+        xous::Message::new_blocking_scalar(
+            susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
+            bao1x_hal_service::api::ClockOp::GetPclk.to_usize().unwrap(),
+            0,
+            0,
+            0,
+        ),
+    ) {
+        pclk / 1000 / 2
+    } else {
+        panic!("Can't get pclk")
+    };
+    pclk_ms
 }
