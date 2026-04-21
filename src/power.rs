@@ -507,8 +507,8 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                             alarm_set = true;
                         }
                     }
-                    if k == '🔁' {
-                        log::info!("tilt keep-on");
+                    if k == '🔽' || k == '🔼' {
+                        log::debug!("tilt keep-on");
                     }
                 }
                 last_action_time_ms = tt.elapsed_ms();
@@ -578,6 +578,11 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
                             orientation = o;
                             gfx.flip_screen(o == Orientation::FaceDown).ok();
                             kbd.flip_orientation(o == Orientation::FaceDown);
+                            if orientation == Orientation::FaceDown {
+                                kbd.inject_key('🔽');
+                            } else {
+                                kbd.inject_key('🔼');
+                            }
                         }
 
                         // enable the interrupts on boot
