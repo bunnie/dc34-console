@@ -80,12 +80,15 @@ mod test;
 use test::*;
 mod usb;
 use usb::*;
+mod image;
+use image::*;
 
 pub struct CmdEnv {
     common_env: CommonEnv,
     lastverb: String,
     ///// 2. declare storage for your command here.
     usb: Usb,
+    image: Image,
 }
 impl CmdEnv {
     pub fn new(xns: &xous_names::XousNames) -> CmdEnv {
@@ -103,6 +106,7 @@ impl CmdEnv {
             lastverb: String::new(),
             ///// 3. initialize your storage, by calling new()
             usb: Usb::new(),
+            image: Image::new(),
         }
     }
 
@@ -123,6 +127,7 @@ impl CmdEnv {
             &mut ver_cmd,
             &mut console_cmd,
             &mut self.usb,
+            &mut self.image,
         ];
 
         if let Some(cmdline) = maybe_cmdline {
