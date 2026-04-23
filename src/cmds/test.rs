@@ -478,6 +478,11 @@ impl<'a> ShellCmdApi<'a> for Test {
                     log::info!("k0 already set, refusing to overwrite!")
                 }
             }
+            "jig" => {
+                let conn = _env.xns.request_connection_blocking("_Vault2_").unwrap();
+                xous::send_message(conn, xous::Message::new_scalar(1025, 0, 0, 0, 0)).ok();
+                write!(ret, "jig mode set").ok();
+            }
             "hw" => {
                 write!(ret, "Xous version: {}", _env.ticktimer.get_version()).unwrap();
                 log::info!(

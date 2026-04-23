@@ -145,7 +145,7 @@ impl Lightgenes {
             log::info!("phenotype: {:?}", phenotype);
             let mrnas = phenotype.serialize();
             for (index, mrna) in mrnas.iter().enumerate() {
-                let codon = (index as u32) << 8 | *mrna as u32;
+                let codon = (index as u32) << 8 | *mrna as u32 | 0x4000_0000;
                 self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, codon);
                 while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
                     // don't overflow the fifo

@@ -254,7 +254,7 @@ static void do_lightgene(uint32_t actual_leds) {
      */
     // 254L cheesily avoids rounding errors.
     if( !hue_dir ) {
-      hue_temp = ((128 / (count / 2)) * i + (loop * hue_rate)) - 0L;
+      hue_temp = ((128 / ((count - LED_OFFSET) / 2)) * i + (loop * hue_rate)) - 0L;
       hue_temp &= 0x1FF;
       if( hue_temp <= 0xFF ) {
 	    // hue_temp = hue_temp;
@@ -262,7 +262,7 @@ static void do_lightgene(uint32_t actual_leds) {
 	    hue_temp = (511-hue_temp);
       }
     } else {
-      hue_temp = ((128 / (count / 2)) * i - (loop * hue_rate)) - 0L;
+      hue_temp = ((128 / ((count - LED_OFFSET) / 2)) * i - (loop * hue_rate)) - 0L;
       hue_temp &= 0x1FF;
       if( hue_temp <= 0xFF ) {
 	    // hue_temp = hue_temp;
@@ -284,17 +284,18 @@ static void do_lightgene(uint32_t actual_leds) {
 
     //twopi = 3.14159265359 * 2.0;
     // space = (2pi * diploid.cd_period * i) / (count-1))
-    space = fp_div(
-                fp_mul(
+    space =   fp_mul(
                   FP_TWO_PI,
                   fp_mul(
                     FP_FROM_INT(diploid.cd_period),
-                    FP_FROM_INT(i)
+                    fp_div(
+                      FP_FROM_INT(i),
+                      FP_FROM_INT(count - 1 - LED_OFFSET)
+                    )
                   )
-                ),
-                FP_FROM_INT(count - 1)
-              );
-	//space = twopi * diploid.cd_period * ((float)i / ((float)count - 1.0));
+                );
+
+	  //space = twopi * diploid.cd_period * ((float)i / ((float)count - 1.0));
 
     // time = 2pi * (indextime) / tau
     time = fp_div(fp_mul(FP_TWO_PI, FP_FROM_INT(indextime)), FP_FROM_INT(tau) );
@@ -325,16 +326,22 @@ static void do_lightgene(uint32_t actual_leds) {
 
     // now compute lin effect, but only if the threshold is met
     if( diploid.lin < 88 ) {  // rare variant after a summing expression ~3% chance
-      shoot = (loop / 2) % count;
+      shoot = (loop / 2) % (count - LED_OFFSET);
       if( shoot == i ) {
 	       overrideHSV = 1;
       }
 
-      if (loop < count / 2) {
+      if (shoot < ((count - LED_OFFSET) / 2)) {
         eye_left.r = 192;
         eye_left.g = 192;
         eye_left.b = 192;
+        eye_right.r = 0;
+        eye_right.g = 0;
+        eye_right.b = 0;
       } else {
+        eye_left.r = 0;
+        eye_left.g = 0;
+        eye_left.b = 0;
         eye_right.r = 192;
         eye_right.g = 192;
         eye_right.b = 192;
@@ -352,7 +359,7 @@ static void do_lightgene(uint32_t actual_leds) {
     if( !overrideHSV ) {
       ledSetRGB(fb, i + LED_OFFSET, rgbC.r, rgbC.g, rgbC.b, shift);
     } else {
-      ledSetRGB(fb, i + LED_OFFSET, 192, 192, 192, shift);
+      ledSetRGB(fb, i + LED_OFFSET, 160, 160, 160, shift);
     }
   }
 
@@ -435,10 +442,12 @@ void main(void) {
             }
 
             // extract index & force it to be in-range
-            index = (incoming >> 8) & 0xff;
-            index = index % sizeof(genome);
-            gene_ptr[index] = (uint8_t) (incoming & 0xff);
-            init = 1;
+            if ((incoming & 0x40000000) != 0) {
+              index = (incoming >> 8) & 0xff;
+              index = index % sizeof(genome);
+              gene_ptr[index] = (uint8_t) (incoming & 0xff);
+              init = 1;
+            }
         }
 
         if (led_gate == 0) {

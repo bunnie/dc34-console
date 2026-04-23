@@ -125,8 +125,8 @@ fp_t fp_div(fp_t a, fp_t b)
 		bit <<= 1;
 	}
 
-	if (!bit)
-		return FIX16_OVERFLOW;
+	//if (!bit)
+	//	return FIX16_OVERFLOW;
 
 	if (divider & 0x80000000)
 	{
