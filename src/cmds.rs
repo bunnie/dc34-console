@@ -78,8 +78,6 @@ mod ver;
 use ver::*;
 mod test;
 use test::*;
-mod usb;
-use usb::*;
 mod image;
 use image::*;
 
@@ -87,7 +85,6 @@ pub struct CmdEnv {
     common_env: CommonEnv,
     lastverb: String,
     ///// 2. declare storage for your command here.
-    usb: Usb,
     image: Image,
 }
 impl CmdEnv {
@@ -105,7 +102,6 @@ impl CmdEnv {
             common_env: _common,
             lastverb: String::new(),
             ///// 3. initialize your storage, by calling new()
-            usb: Usb::new(),
             image: Image::new(),
         }
     }
@@ -126,7 +122,6 @@ impl CmdEnv {
             &mut echo_cmd,
             &mut ver_cmd,
             &mut console_cmd,
-            &mut self.usb,
             &mut self.image,
         ];
 

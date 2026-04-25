@@ -334,66 +334,6 @@ impl<'a> ShellCmdApi<'a> for Test {
                 log::info!("autogamy sent");
             }
             #[cfg(feature = "misc-test")]
-            "bt" => {
-                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
-                if args.len() != 1 {
-                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
-                }
-                let badge_type = match args[0].as_str() {
-                    "human" => BadgeType::Human,
-                    "goon" => BadgeType::Goon,
-                    "comm" => BadgeType::Community,
-                    "ctf" => BadgeType::CtfContest,
-                    "other" => BadgeType::Other,
-                    "uber" => BadgeType::Uber,
-                    "village" => BadgeType::Village,
-                    _ => BadgeType::None,
-                };
-                log::info!("Setting BadgeType: {:?}", badge_type);
-                xous::send_message(
-                    conn,
-                    xous::Message::new_blocking_scalar(
-                        dc34_api::LedManagerOp::GeneTest.to_usize().unwrap(),
-                        badge_type as u8 as usize,
-                        0,
-                        0,
-                        0,
-                    ),
-                )
-                .ok();
-            }
-            #[cfg(feature = "misc-test")]
-            "mate" => {
-                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
-                if args.len() != 1 {
-                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
-                }
-                let badge_type = match args[0].as_str() {
-                    "human" => BadgeType::Human,
-                    "goon" => BadgeType::Goon,
-                    "comm" => BadgeType::Community,
-                    "ctf" => BadgeType::CtfContest,
-                    "other" => BadgeType::Other,
-                    "uber" => BadgeType::Uber,
-                    "village" => BadgeType::Village,
-                    _ => BadgeType::None,
-                };
-                let sperm = Haploid::from_type(&badge_type);
-                let args = sperm.serialize_u32();
-                log::info!("Mating with fictional {:?}", badge_type);
-                xous::send_message(
-                    conn,
-                    xous::Message::new_blocking_scalar(
-                        dc34_api::LedManagerOp::Syngamy.to_usize().unwrap(),
-                        args[0] as usize,
-                        args[1] as usize,
-                        args[2] as usize,
-                        args[3] as usize,
-                    ),
-                )
-                .ok();
-            }
-            #[cfg(feature = "misc-test")]
             "hue" => {
                 if args.len() != 1 {
                     write!(ret, "{}", "Usage: hue <val>").ok();
@@ -477,6 +417,71 @@ impl<'a> ShellCmdApi<'a> for Test {
                 } else {
                     log::info!("k0 already set, refusing to overwrite!")
                 }
+            }
+            #[cfg(feature = "hazardous-test")]
+            "k0check" => {
+                let k0 = get_k0();
+                log::info!("k0: {:x?}", k0);
+            }
+            #[cfg(feature = "qa-test")]
+            "bt" => {
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                if args.len() != 1 {
+                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
+                }
+                let badge_type = match args[0].as_str() {
+                    "human" => BadgeType::Human,
+                    "goon" => BadgeType::Goon,
+                    "comm" => BadgeType::Community,
+                    "ctf" => BadgeType::CtfContest,
+                    "other" => BadgeType::Other,
+                    "uber" => BadgeType::Uber,
+                    "village" => BadgeType::Village,
+                    _ => BadgeType::None,
+                };
+                log::info!("Setting BadgeType: {:?}", badge_type);
+                xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        dc34_api::LedManagerOp::GeneTest.to_usize().unwrap(),
+                        badge_type as u8 as usize,
+                        0,
+                        0,
+                        0,
+                    ),
+                )
+                .ok();
+            }
+            #[cfg(feature = "qa-test")]
+            "mate" => {
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                if args.len() != 1 {
+                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
+                }
+                let badge_type = match args[0].as_str() {
+                    "human" => BadgeType::Human,
+                    "goon" => BadgeType::Goon,
+                    "comm" => BadgeType::Community,
+                    "ctf" => BadgeType::CtfContest,
+                    "other" => BadgeType::Other,
+                    "uber" => BadgeType::Uber,
+                    "village" => BadgeType::Village,
+                    _ => BadgeType::None,
+                };
+                let sperm = Haploid::from_type(&badge_type);
+                let args = sperm.serialize_u32();
+                log::info!("Mating with fictional {:?}", badge_type);
+                xous::send_message(
+                    conn,
+                    xous::Message::new_blocking_scalar(
+                        dc34_api::LedManagerOp::Syngamy.to_usize().unwrap(),
+                        args[0] as usize,
+                        args[1] as usize,
+                        args[2] as usize,
+                        args[3] as usize,
+                    ),
+                )
+                .ok();
             }
             "jig" => {
                 let conn = _env.xns.request_connection_blocking("_Vault2_").unwrap();
