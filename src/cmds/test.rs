@@ -621,6 +621,52 @@ impl<'a> ShellCmdApi<'a> for Test {
                 log::info!("{:?}", keystore.inc_owc_coded::<bao1x_api::offsets::common::BootWaitCoding>());
                 log::info!("{:?}", keystore.get_owc_decoded::<bao1x_api::offsets::common::BootWaitCoding>());
             }
+            #[cfg(feature = "wfi-stress-test")]
+            "wfistress" => {
+                use chrono::{Duration, Utc};
+                use rand::Rng;
+                let _ = std::thread::spawn({
+                    move || {
+                        log::info!("suspend/resume stress test active");
+
+                        let xns = xous_names::XousNames::new().unwrap();
+                        let susres = susres::Susres::new_without_hook(&xns).unwrap();
+                        let tt = ticktimer::Ticktimer::new().unwrap();
+                        tt.sleep_ms(1500).unwrap();
+                        let mut iters = 0;
+                        let mut timeouts = 0;
+                        let rtc = bao1x_hal_service::Rtc::new();
+                        let gfx = ux_api::service::gfx::Gfx::new(&xns).unwrap();
+                        loop {
+                            log::info!("suspend/resume cycle: {} ({} timeouts)", iters, timeouts);
+                            let _rovers = rtc.set_wakeup(Utc::now() + Duration::seconds(6));
+                            tt.sleep_ms(1000).ok();
+                            gfx.set_power(false).unwrap();
+                            match susres.initiate_suspend() {
+                                Err(xous::Error::Timeout) => {
+                                    timeouts += 1;
+                                    log::warn!(
+                                        "Couldn't suspend, a server was blocking suspend. ({}/{})\n",
+                                        timeouts,
+                                        iters
+                                    );
+                                    // wait enough time for the wakeup alarm to have happened before
+                                    // resuming the cycle
+                                    tt.sleep_ms(6000).unwrap();
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    log::error!("Unknown error on suspend: {:?}", e);
+                                }
+                            }
+                            gfx.set_power(true).unwrap();
+                            tt.sleep_ms(4000 + (rand::thread_rng().gen::<u32>() % 7000) as usize).unwrap();
+                            iters += 1;
+                        }
+                    }
+                });
+                write!(ret, "Starting suspend/resume stress test. Hard reboot required to exit.").unwrap();
+            }
             _ => {
                 write!(ret, "{}", helpstring).unwrap();
             }

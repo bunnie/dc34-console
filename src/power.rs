@@ -124,7 +124,10 @@ fn accel_enable_int(accel: &mut Lis2dh12, i2c: &mut I2c, enable: bool) -> Result
     Ok(())
 }
 
-pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>) -> ! {
+pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>, wdt: usize) -> ! {
+    // safety: this is "moved" from the original outer location where the WDT is accessed to set up
+    // an early trigger into this loop, and thus all the safety conditions are met.
+    let mut wdt = unsafe { bao1x_hal::wdt::Wdt::from_raw(wdt) };
     let xns = xous_names::XousNames::new().unwrap();
     let tt = ticktimer::Ticktimer::new().unwrap();
 
@@ -216,9 +219,30 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>)
 
     let susres_conn =
         xns.request_connection_blocking(susres::api::SERVER_NAME_SUSRES).expect("Can't connect to SUSRES");
-    let mut wdt = bao1x_hal::wdt::Wdt::new();
     let pclk_ms = get_wdt_clk_ms(susres_conn);
+    // this re-enables the WDT with the system-provided pclk value (previously enabled on boot
+    // with a hard-coded assumed value)
     wdt.enable((pclk_ms * WDT_FEED_INTERVAL_MS) as u32, true);
+
+    #[cfg(feature = "wfi-stress-test")]
+    // this loop suppresses normal power management so that the stress test can operate
+    loop {
+        let mut msg_opt = None;
+        xous::reply_and_receive_next(sid, &mut msg_opt).unwrap();
+        let opcode = {
+            let msg = msg_opt.as_mut().unwrap();
+            num_traits::FromPrimitive::from_usize(msg.body.id()).unwrap_or(PowerManagerOp::Invalid)
+        };
+        match opcode {
+            PowerManagerOp::Invalid => {
+                log::info!("breaking out of stress test holding pattern");
+                break;
+            }
+            _ => {
+                log::info!("ignoring opcode: {:?}", opcode)
+            }
+        }
+    }
 
     let mut pwr_mgr_enabled = false;
     let mut wfi_awaiting_keypress = false;

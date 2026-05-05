@@ -14,6 +14,13 @@ mod power;
 // .\baosign.ps1 -Config baosec-lite -Target bunnie@10.0.245.164:code/testjig/images/
 
 fn main() {
+    // first thing: initialize the WDT
+    let mut wdt = bao1x_hal::wdt::Wdt::new();
+    // set for nominally 10 seconds to WDT reset - assuming 50 MHz pclk on boot
+    // this is "properly" set later on once the system has fully booted and
+    // the clock manager is queryable
+    wdt.enable((50_000_000 / 2) * 10, true);
+
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);
     log::info!("my PID is {}", xous::process::id());
@@ -21,17 +28,18 @@ fn main() {
     bao1x_hal::claim_duart();
 
     let tt = ticktimer::Ticktimer::new().unwrap();
-    shell::start_shell();
-
     tt.sleep_ms(500).ok(); // pause for the system to startup
-    let usb = usb_bao1x::UsbHid::new();
-    usb.serial_console_input_injection();
+
+    shell::start_shell();
 
     tt.sleep_ms(500).ok();
     leds::start_leds();
 
     let run_led_fade = Arc::new(AtomicBool::new(false));
     let plugged_in = Arc::new(AtomicBool::new(false));
+
+    let usb = usb_bao1x::UsbHid::new();
+    usb.serial_console_input_injection();
 
     std::thread::spawn({
         let run_led_fade = run_led_fade.clone();
@@ -81,10 +89,10 @@ fn main() {
                         }
                     }
 
-                    gfx.brightness(lut[t as usize]).unwrap();
+                    gfx.brightness_nonblocking(lut[t as usize]);
                 } else {
                     if was_fading || is_plugged {
-                        gfx.brightness(MAX).unwrap();
+                        gfx.brightness_nonblocking(MAX);
                         t = MAX;
                     }
                     std::thread::sleep(std::time::Duration::from_millis(500));
@@ -94,5 +102,21 @@ fn main() {
         }
     });
 
-    power::power_manager(run_led_fade, plugged_in);
+    // attempting to see if threading the power manager improves stability
+    // safety: the wdt object is "retired" after this call, so there are no concurrency
+    // issues, and the wdt memory address range is guaranteed to be correct and defined
+    let wdt_addr = unsafe { wdt.to_raw() };
+    std::thread::spawn({
+        move || {
+            power::power_manager(run_led_fade, plugged_in, wdt_addr);
+        }
+    });
+
+    // idle forever, maybe turn this into a full blocking server that just parks and ends
+    let dummy_sid = xous::create_server().unwrap();
+    loop {
+        // this just blocks forever, since the server ID is never passed to anyone else, effectively
+        // parking the main thread
+        let _ = xous::receive_message(dummy_sid);
+    }
 }

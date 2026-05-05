@@ -108,6 +108,8 @@ hosted-baosec = [
     "bao1x-hal/hosted-baosec",
 ]
 owc-test = ["keystore/owc-inc"]
+# stress test for WFI resume
+wfi-stress-test = []
 # gate for misc test routines
 misc-test = []
 # for qa testing
