@@ -410,6 +410,7 @@ void main(void) {
 
     // this is used to skip LED updating during e.g. clock rate changes
     uint32_t led_gate = 0;
+    uint32_t wfi_mode = 0;
 
     // set event mask to 0, so that we don't halt when the event register is read.
     // this allows us to poll the event register without blocking on it.
@@ -440,6 +441,17 @@ void main(void) {
               jack_eyes = 0;
               continue;
             }
+            if ((incoming & 0xFFFFFFFE) == 0x08000000) {
+              wfi_mode = incoming & 0x1;
+              // ack the wfi_mode setting by pushing "anything" into the FIFO
+              push_fifo2(42);
+              continue;
+              if (wfi_mode == 0) {
+                // add more time coming out of WFI mode to prevent bright-glitch on WFI exit
+                // this has been padded by at least 2 beyond the minimum value to handle device variances
+                led_gate = 8;
+              }
+            }
 
             // extract index & force it to be in-range
             if ((incoming & 0x40000000) != 0) {
@@ -451,7 +463,11 @@ void main(void) {
         }
 
         if (led_gate == 0) {
-          ws2812c(pin, led_buf, actual_leds);
+          if (wfi_mode != 0) {
+            ws2812c_wfi(pin, led_buf, actual_leds);
+          } else {
+            ws2812c(pin, led_buf, actual_leds);
+          }
         }
         if (init == 0) {
           test_pattern(actual_leds);
@@ -465,7 +481,17 @@ void main(void) {
         // "real time" sense of time in time_ms (in reality runs a bit slow
         // because we don't trim out the bitbang & next compute times)
         for (uint32_t j = 0; j < 35; j++) {
-            for (uint32_t i = 0; i < QUANTUM_PER_MS; i++) {
+            for (uint32_t i = 0; i < QUANTUM_PER_MS / 10; i++) {
+                // unroll this loop to mitigate timing offset in wfi mode
+                wait_quantum();
+                wait_quantum();
+                wait_quantum();
+                wait_quantum();
+                wait_quantum();
+                wait_quantum();
+                wait_quantum();
+                wait_quantum();
+                wait_quantum();
                 wait_quantum();
             }
             time_ms += 1;

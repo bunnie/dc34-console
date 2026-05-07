@@ -15,6 +15,8 @@ pub struct Lightgenes {
     _tx_handle: CoreHandle,
     // the CoreCsr is a convenience object that manages the CSR view of the handle
     tx: CoreCsr,
+    _rx_handle: CoreHandle,
+    rx: CoreCsr,
     // tracks the resources used by the object
     resource_grant: ResourceGrant,
     pub gene: Option<Diploid>,
@@ -42,11 +44,25 @@ impl Drop for Lightgenes {
     }
 }
 
+// 4.651 mhz actual
+
+// 140ns * 53 divider -> 378.571 MHz actual clock
+
+// 145ns * 7 divider ->
+
+// full speed (2.85ns/cyc):
+//   19.9ns each instruction pair -> 7 cycles
+//   150ns per quantum
+// reduced speed (20.8ns/cyc):
+//   63ns "low" (3 cyc), 82.8ns "high" (4 cyc)
+//   145ns per quantum -> 7 cyc = 2 instructions
 impl Lightgenes {
     pub fn new(bio_pin: u5, led_count: u8, io_mode: Option<IoConfigMode>) -> Result<Self, BioError> {
         let mut bio_ss = Bio::new();
         // claim core resource and initialize it
         let resource_grant = bio_ss.claim_resources(&Self::resource_spec())?;
+        // 150 ns nominal
+        log::info!("using core: {:?}", resource_grant.cores[0]);
         let config = CoreConfig { clock_mode: bao1x_api::bio::ClockMode::TargetFreqInt(6_666_667) };
         bio_ss.init_core(resource_grant.cores[0], lightgenes_bio_code(), config)?;
         bio_ss.set_core_run_state(&resource_grant, true);
@@ -69,6 +85,7 @@ impl Lightgenes {
         // safety: fifo1 is stored in this object so they aren't Drop'd before the object is
         // destroyed
         let tx_handle = unsafe { bio_ss.get_core_handle(Fifo::Fifo1) }?.expect("Didn't get FIFO1 handle");
+        let rx_handle = unsafe { bio_ss.get_core_handle(Fifo::Fifo2) }?.expect("Didn't get FIFO2 handle");
 
         let mut tx = CoreCsr::from_handle(&tx_handle);
         // set FIFO1 event trigger level, so that the event triggers if there is more than
@@ -93,8 +110,10 @@ impl Lightgenes {
             bio_pin,
             _led_count: led_count,
             tx: CoreCsr::from_handle(&tx_handle),
+            rx: CoreCsr::from_handle(&rx_handle),
             // safety: tx and rx are wrapped in CSR objects whose lifetime matches that of the handles
             _tx_handle: tx_handle,
+            _rx_handle: rx_handle,
             resource_grant,
             gene: None,
         })
@@ -170,14 +189,57 @@ impl Lightgenes {
     }
 
     /// Pause now has the behavior of automatically un-pausing. The purpose of this
-    /// is to briefly stop rendering while the device goes between clock modes.
-    pub fn pause_rendering(&mut self) {
+    /// is to briefly stop rendering while the device goes between clock modes. The routine
+    /// needs to be infallible, so timeouts are used in case the BIO is in a bad state - otherwise
+    /// the system could be stuck in a state draining the batteries.
+    pub fn pause_rendering(&mut self, wfi_mode: bool) {
+        // set to equal about 50ms
+        const TIMEOUT: u32 = 3_500_000;
+        let mut timeout = 0;
         // log::info!("pause!!!");
-        while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
+        // drain any errant rx
+        while self.rx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL2) != 0
+            && timeout < TIMEOUT
+        {
+            self.rx.csr.r(utralib::utra::bio_bdma::SFR_TXF2);
+            timeout += 1;
+        }
+        timeout = 0;
+
+        // send transition indicator
+        while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 && timeout < TIMEOUT
+        {
             // don't overflow the fifo
+            timeout += 1;
         }
         self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x8000_0000);
         self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0000_0000);
+
+        // send WFI mode direction (fast to slow or slow to fast)
+        if wfi_mode {
+            self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0800_0001);
+        } else {
+            self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0800_0000);
+        }
+        self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0000_0000);
+
+        // wait for ack - anything in the Rx acks it. This ensures we don't WFI-transition
+        // while the LED strip is actively transmitting.
+        timeout = 0;
+        while self.rx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL2) == 0
+            && timeout < TIMEOUT
+        {
+            timeout += 1;
+        }
+
+        // drain any errant rx
+        timeout = 0;
+        while self.rx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL2) != 0
+            && timeout < TIMEOUT
+        {
+            self.rx.csr.r(utralib::utra::bio_bdma::SFR_RXF2);
+            timeout += 1;
+        }
     }
 
     /*
