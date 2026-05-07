@@ -299,11 +299,15 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                     || force_wfi
                 {
                     force_wfi = false; // always reset this here
-                    gfx.set_power(false).unwrap();
+                    gfx.set_power(false).ok();
                     wfi_awaiting_keypress = true; // this tells the KeyPress handler we have to turn on the screen
 
                     wdt.disable();
-                    susres.initiate_suspend().unwrap();
+                    // don't crash on suspend initiation failure - WDT is off! just report so we can find it
+                    // in logs.
+                    if susres.initiate_suspend().is_err() {
+                        log::error!("**suspend err**");
+                    };
                     // we idled, until a button was pressed
                     wdt.enable((pclk_ms * WDT_FEED_INTERVAL_MS) as u32, true);
 
