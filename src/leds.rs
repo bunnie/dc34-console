@@ -83,8 +83,8 @@ fn leds() {
                 }
             }
             LedManagerOp::Pause => {
-                if let Some(_scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
-                    lightgenes.pause_rendering();
+                if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    lightgenes.pause_rendering(scalar.arg1 != 0);
                 }
             }
             LedManagerOp::Invalid => {
