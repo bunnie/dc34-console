@@ -30,7 +30,7 @@ const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 4;
 const MOTION_IRQ_MARGIN_MS: u64 = 1000;
 const WFI_IDLE_SEC_INIT: u64 = 60;
 const WFI_MIN_SEC: usize = 5;
-const DEEP_SLEEP_SEC: i64 = 5 * 60; // 15 * 60; // 15 minutes of total quiescence in deployment
+const DEEP_SLEEP_SEC: i64 = 30; // 5 * 60; // 15 * 60; // 15 minutes of total quiescence in deployment
 
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
@@ -245,6 +245,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
     }
 
     let mut pwr_mgr_enabled = false;
+    let mut booted = false;
     let mut wfi_awaiting_keypress = false;
     let mut idle_sec = WFI_IDLE_SEC_INIT;
     let mut force_wfi = false;
@@ -273,8 +274,11 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                 }
             }
             PowerManagerOp::Poll => {
-                // keep the system alive
-                wdt.feed();
+                if booted {
+                    // keep the system alive, once we've successfully booted; if we don't boot
+                    // before the first WDT timeout, this will force a reboot.
+                    wdt.feed();
+                }
                 let now_ms = tt.elapsed_ms();
                 // check for consistency and fix any rollover/time-setting bugs
                 if last_action_time_ms > now_ms {
@@ -588,6 +592,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
             PowerManagerOp::Boot => {
                 if let Some(_scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
                     pwr_mgr_enabled = true;
+                    booted = true;
 
                     let rovers =
                         rtc.set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC)).unwrap_or(0);
