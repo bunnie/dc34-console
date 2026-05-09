@@ -6,6 +6,7 @@ use std::sync::{
 use bao1x_api::{IoIrq, IoxHal, IoxValue};
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
 use bao1x_hal::{axp2101::VbusIrq, i2c::I2c};
+use bao1x_hal_service::Rtc;
 use chrono::Utc;
 use dc34_api::*;
 use num_traits::ToPrimitive;
@@ -58,8 +59,8 @@ fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     // CTRL_REG1: 25Hz, normal mode, XYZ enabled
     // [7:4]=0011 (25Hz), [2:0]=111
     accel.write_register(i2c, regs::CTRL_REG1, 0x37)?;
-    accel.write_register(i2c, regs::INT1_THS, 20)?;
-    accel.write_register(i2c, regs::INT1_DURATION, 2)?;
+    accel.write_register(i2c, regs::INT1_THS, 18)?;
+    accel.write_register(i2c, regs::INT1_DURATION, 3)?;
     /*
     Tuning loop:
       Start at THS=20, DUR=2
@@ -401,15 +402,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                         // only enable deep sleep if we're on battery power
                         if vbus_state == IoxValue::Low {
                             // this pushes the alarm date out by the deep sleep time horizon
-                            let rovers = rtc
-                                .set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC))
-                                .unwrap_or(0);
-                            if rovers > 1 {
-                                log::warn!(
-                                    "Rollover case for RTC not handled, wakeup will fail. rovers: {}",
-                                    rovers
-                                );
-                            }
+                            set_wakeup_alarm(&rtc);
                             alarm_set = true;
                         }
                     }
@@ -483,6 +476,11 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                     ),
                 )
                 .ok();
+
+                // if not plugged in, make sure the RTC alarm is set so we go into deep sleep
+                if vbus_state == IoxValue::Low {
+                    set_wakeup_alarm(&rtc);
+                }
             }
             PowerManagerOp::KeyPress => {
                 if let Some(scalar) = msg_opt.as_ref().unwrap().body.scalar_message() {
@@ -527,15 +525,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                         // only enable deep sleep if we're on battery power
                         if vbus_state == IoxValue::Low {
                             // this pushes the alarm date out by the deep sleep time horizon
-                            let rovers = rtc
-                                .set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC))
-                                .unwrap_or(0);
-                            if rovers > 1 {
-                                log::warn!(
-                                    "Rollover case for RTC not handled, wakeup will fail. rovers: {}",
-                                    rovers
-                                );
-                            }
+                            set_wakeup_alarm(&rtc);
                             alarm_set = true;
                         }
                     }
@@ -594,11 +584,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                     pwr_mgr_enabled = true;
                     booted = true;
 
-                    let rovers =
-                        rtc.set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC)).unwrap_or(0);
-                    if rovers > 1 {
-                        log::warn!("Rollover case for RTC not handled, wakeup will fail. rovers: {}", rovers);
-                    }
+                    set_wakeup_alarm(&rtc);
                     alarm_set = true;
 
                     // check ground truth now that we're settled
@@ -654,4 +640,11 @@ fn get_wdt_clk_ms(susres_conn: xous::CID) -> usize {
         panic!("Can't get pclk")
     };
     pclk_ms
+}
+
+fn set_wakeup_alarm(rtc: &Rtc) {
+    let rovers = rtc.set_wakeup(Utc::now() + chrono::Duration::seconds(DEEP_SLEEP_SEC)).unwrap_or(0);
+    if rovers > 1 {
+        log::warn!("Rollover case for RTC not handled, wakeup will fail. rovers: {}", rovers);
+    }
 }
