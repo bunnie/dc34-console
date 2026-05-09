@@ -135,6 +135,7 @@ impl Lightgenes {
         }
     }
 
+    /* // test routine deprecated and instead implemented explicitly in the test receiver
     pub fn syngamy(&mut self, mut sperm: Haploid, mut_rate: MutationRate) {
         let egg = self.meiosis();
         if let Some(mut egg) = egg {
@@ -143,6 +144,7 @@ impl Lightgenes {
             self.gene.replace(Diploid([egg, sperm]));
         }
     }
+    */
 
     /// Forces a given gene to be expressed. Does not affect the light gene state.
     pub fn force(&mut self, phenotype: Haploid) {
@@ -160,15 +162,24 @@ impl Lightgenes {
     /// Express the current phenotype by sending it to the light rendering engine
     pub fn express(&mut self) {
         if let Some(gene) = &self.gene {
+            // drain errant Rx - shouldn't be necessary, but just in case
+            while self.rx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL2) != 0 {
+                log::warn!("errant Rx in express");
+                self.rx.csr.r(utralib::utra::bio_bdma::SFR_TXF2);
+            }
+            self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0000_0000); // paranoia, clear any previous state
             let phenotype = gene.phenotype();
             log::info!("phenotype: {:?}", phenotype);
             let mrnas = phenotype.serialize();
             for (index, mrna) in mrnas.iter().enumerate() {
                 let codon = (index as u32) << 8 | *mrna as u32 | 0x4000_0000;
-                self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, codon);
                 while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
                     // don't overflow the fifo
                 }
+                self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, codon);
+            }
+            while self.tx.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL1) > 7 {
+                // don't overflow the fifo
             }
             self.tx.csr.wo(utralib::utra::bio_bdma::SFR_TXF1, 0x0000_0000);
         } else {
