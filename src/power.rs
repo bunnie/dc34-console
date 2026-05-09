@@ -11,19 +11,6 @@ use chrono::Utc;
 use dc34_api::*;
 use num_traits::ToPrimitive;
 
-/*
-Power manager policy notes
-
-Goals:
-- aggressively enter wfi sleep - screen inactive, lights running
-  - wake from wfi sleep should be keypress only
-  - wfi sleep control time is set by application
-- after a longer period of time, go into deep sleep
-  - no lights running
-  - wake by accelerometer interrupt or keypress
-  - deep sleep control time is set by power manager
-*/
-
 const POWER_POLL_INTERVAL_MS: usize = 2500;
 const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 4;
 // this gives some margin for the keypress to "catch up" in case both motion and
@@ -31,7 +18,7 @@ const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 4;
 const MOTION_IRQ_MARGIN_MS: u64 = 1000;
 const WFI_IDLE_SEC_INIT: u64 = 60;
 const WFI_MIN_SEC: usize = 5;
-const DEEP_SLEEP_SEC: i64 = 5 * 60; // 15 * 60; // 15 minutes of total quiescence in deployment
+const DEEP_SLEEP_SEC: i64 = 20 * 60; // 20 minutes of low-power light show in deployment
 
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
@@ -251,6 +238,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
     let mut idle_sec = WFI_IDLE_SEC_INIT;
     let mut force_wfi = false;
     let mut force_deep_sleep = false;
+    let mut power_off = false;
 
     let mut last_action_time_ms = tt.elapsed_ms();
     let mut msg_opt = None;
@@ -489,9 +477,20 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                         force_deep_sleep = false; // always reset here
                         log::info!("Deep sleep trigger hit!");
 
-                        // ensure accelerometer interrupts are enabled, that's the primary source of waking
                         if let Some(a) = &mut accel {
-                            accel_enable_int(a, &mut i2c, true).unwrap();
+                            if !power_off {
+                                // ensure accelerometer interrupts are enabled, that's the primary source of
+                                // waking
+                                accel_enable_int(a, &mut i2c, true).ok();
+                            } else {
+                                // prepare for extended power-off - disable all motion interrupts
+                                // Clear any pending interrupts on both engines
+                                let _ = a.read_register(&mut i2c, regs::INT1_SRC).ok();
+                                let _ = a.read_register(&mut i2c, regs::INT2_SRC).ok();
+                                let saved_ctrl3 = a.read_register(&mut i2c, regs::CTRL_REG3).unwrap();
+                                a.write_register(&mut i2c, regs::CTRL_REG3, saved_ctrl3 & !(0x40 | 0x20))
+                                    .ok();
+                            }
                         }
                         // turn off screen
                         gfx.set_power(false).unwrap();
@@ -617,6 +616,28 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
             }
             PowerManagerOp::Invalid => {
                 log::error!("Invalid power manager operation: {:?}", opcode);
+            }
+            PowerManagerOp::PowerOff => {
+                power_off = true;
+                std::thread::spawn(move || {
+                    let rtc = bao1x_hal_service::Rtc::new();
+                    // sleep 5 seconds, then power off
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    // clears the RTC alarm
+                    rtc.clear_wakeup();
+                    // emulates the RTC deep-sleep alarm
+                    xous::try_send_message(
+                        cid,
+                        xous::Message::new_scalar(
+                            PowerManagerOp::KeyPress.to_usize().unwrap(),
+                            '⏰' as usize,
+                            0,
+                            0,
+                            0,
+                        ),
+                    )
+                    .ok();
+                });
             }
         }
     }
