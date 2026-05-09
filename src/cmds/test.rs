@@ -9,11 +9,17 @@ use crate::{CommonEnv, ShellCmdApi};
 #[derive(Debug)]
 pub struct Test {
     pwr_mgr: xous::CID,
+    #[cfg(feature = "qa-test")]
+    mutation_rate: u8,
 }
 impl Test {
     pub fn new() -> Self {
         let xns = xous_names::XousNames::new().unwrap();
-        Self { pwr_mgr: xns.request_connection_blocking(POWER_MANAGER_SERVER).unwrap() }
+        Self {
+            pwr_mgr: xns.request_connection_blocking(POWER_MANAGER_SERVER).unwrap(),
+            #[cfg(feature = "qa-test")]
+            mutation_rate: 1,
+        }
     }
 }
 
@@ -424,27 +430,19 @@ impl<'a> ShellCmdApi<'a> for Test {
                 log::info!("k0: {:x?}", k0);
             }
             #[cfg(feature = "qa-test")]
-            "bt" => {
-                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+            "rate" => {
                 if args.len() != 1 {
-                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
+                    write!(ret, "test rate <rate>, where rate is 0-255").ok();
                 }
-                let badge_type = match args[0].as_str() {
-                    "human" => BadgeType::Human,
-                    "goon" => BadgeType::Goon,
-                    "comm" => BadgeType::Community,
-                    "ctf" => BadgeType::CtfContest,
-                    "other" => BadgeType::Other,
-                    "uber" => BadgeType::Uber,
-                    "village" => BadgeType::Village,
-                    _ => BadgeType::None,
-                };
-                log::info!("Setting BadgeType: {:?}", badge_type);
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                let rate = u8::from_str_radix(&args[0], 10).unwrap_or(0);
+                self.mutation_rate = rate;
+                log::info!("Fixing rate to {}", self.mutation_rate);
                 xous::send_message(
                     conn,
                     xous::Message::new_blocking_scalar(
-                        dc34_api::LedManagerOp::GeneTest.to_usize().unwrap(),
-                        badge_type as u8 as usize,
+                        dc34_api::LedManagerOp::SetTestRate.to_usize().unwrap(),
+                        self.mutation_rate as usize,
                         0,
                         0,
                         0,
@@ -453,9 +451,39 @@ impl<'a> ShellCmdApi<'a> for Test {
                 .ok();
             }
             #[cfg(feature = "qa-test")]
-            "mate" => {
+            "bt" => {
                 let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
                 if args.len() != 1 {
+                    write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
+                } else {
+                    let badge_type = match args[0].as_str() {
+                        "human" => BadgeType::Human,
+                        "goon" => BadgeType::Goon,
+                        "comm" => BadgeType::Community,
+                        "ctf" => BadgeType::CtfContest,
+                        "other" => BadgeType::Other,
+                        "uber" => BadgeType::Uber,
+                        "village" => BadgeType::Village,
+                        _ => BadgeType::None,
+                    };
+                    log::info!("Setting BadgeType: {:?}", badge_type);
+                    xous::send_message(
+                        conn,
+                        xous::Message::new_blocking_scalar(
+                            dc34_api::LedManagerOp::GeneTest.to_usize().unwrap(),
+                            badge_type as u8 as usize,
+                            0,
+                            0,
+                            0,
+                        ),
+                    )
+                    .ok();
+                }
+            }
+            #[cfg(feature = "qa-test")]
+            "mate" => {
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                if args.len() < 1 {
                     write!(ret, "{}", "Usage: bt [human|goon|comm|village|ctf|other|uber]").ok();
                 }
                 let badge_type = match args[0].as_str() {
@@ -468,7 +496,15 @@ impl<'a> ShellCmdApi<'a> for Test {
                     "village" => BadgeType::Village,
                     _ => BadgeType::None,
                 };
-                let sperm = Haploid::from_type(&badge_type);
+                let mut sperm = Haploid::from_type(&badge_type);
+                let rate = MutationRate::from_param(self.mutation_rate);
+                if args.len() > 1 {
+                    log::info!("elevated sperm mutation rate {}/{:?}", self.mutation_rate, rate);
+                    mutate(&mut sperm, rate);
+                } else {
+                    log::info!("baseline mutation rate");
+                    mutate(&mut sperm, MutationRate::Baseline); // use the "standard" rate of a donor
+                }
                 let args = sperm.serialize_u32();
                 log::info!("Mating with fictional {:?}", badge_type);
                 xous::send_message(

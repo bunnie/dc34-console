@@ -86,6 +86,7 @@ pub struct CmdEnv {
     lastverb: String,
     ///// 2. declare storage for your command here.
     image: Image,
+    test: Test,
 }
 impl CmdEnv {
     pub fn new(xns: &xous_names::XousNames) -> CmdEnv {
@@ -103,6 +104,7 @@ impl CmdEnv {
             lastverb: String::new(),
             ///// 3. initialize your storage, by calling new()
             image: Image::new(),
+            test: Test::new(),
         }
     }
 
@@ -115,13 +117,12 @@ impl CmdEnv {
 
         let mut echo_cmd = Echo {}; // this command has no persistent storage, so we can "create" it every time we call dispatch (but it's a zero-cost absraction so this doesn't actually create any instructions)
         let mut ver_cmd = Ver {};
-        let mut console_cmd = Test::new();
 
         let commands: &mut [&mut dyn ShellCmdApi] = &mut [
             ///// 4. add your command to this array, so that it can be looked up and dispatched
             &mut echo_cmd,
             &mut ver_cmd,
-            &mut console_cmd,
+            &mut self.test,
             &mut self.image,
         ];
 
