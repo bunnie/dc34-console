@@ -5,7 +5,7 @@ use std::sync::{
 
 use bao1x_api::{IoIrq, IoxHal, IoxValue};
 use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
-use bao1x_hal::{axp2101::VbusIrq, i2c::I2c};
+use bao1x_hal::{axp2101::VbusIrq, clocks::ClockOp, i2c::I2c};
 use bao1x_hal_service::Rtc;
 use chrono::Utc;
 use dc34_api::*;
@@ -500,7 +500,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                             susres_conn,
                             xous::Message::new_scalar(
                                 susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
-                                bao1x_hal_service::api::ClockOp::DeepSleep.to_usize().unwrap(),
+                                ClockOp::DeepSleep.to_usize().unwrap(),
                                 0,
                                 0,
                                 0,
@@ -650,7 +650,7 @@ fn get_wdt_clk_ms(susres_conn: xous::CID) -> usize {
         susres_conn,
         xous::Message::new_blocking_scalar(
             susres::api::Opcode::PlatformSpecific.to_usize().unwrap(),
-            bao1x_hal_service::api::ClockOp::GetPclk.to_usize().unwrap(),
+            ClockOp::GetPclk.to_usize().unwrap(),
             0,
             0,
             0,

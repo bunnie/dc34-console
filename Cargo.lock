@@ -250,8 +250,12 @@ dependencies = [
  "bao1x-hal",
  "bitbybit",
  "log",
+ "num-derive",
+ "num-traits",
  "utralib",
  "xous",
+ "xous-api-names",
+ "xous-api-susres",
  "xous-api-ticktimer",
 ]
 
