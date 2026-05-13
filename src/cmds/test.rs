@@ -451,6 +451,30 @@ impl<'a> ShellCmdApi<'a> for Test {
                 .ok();
             }
             #[cfg(feature = "qa-test")]
+            "transmute" => {
+                let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
+                if args.len() != 1 {
+                    write!(ret, "{}", "Usage: transmute [human|goon|comm|village|ctf|other|uber]").ok();
+                } else {
+                    let badge_type = match args[0].as_str() {
+                        "human" => BadgeType::Human,
+                        "goon" => BadgeType::Goon,
+                        "comm" => BadgeType::Community,
+                        "ctf" => BadgeType::CtfContest,
+                        "other" => BadgeType::Other,
+                        "uber" => BadgeType::Uber,
+                        "village" => BadgeType::Village,
+                        _ => BadgeType::None,
+                    };
+                    log::info!("Transmuting BadgeType: {:?}", badge_type);
+                    init_light_gene(badge_type);
+                    let gene = get_light_gene();
+                    if let Some(gene) = gene {
+                        gene.send(conn, LedManagerOp::SetGene.to_usize().unwrap());
+                    }
+                }
+            }
+            #[cfg(feature = "qa-test")]
             "bt" => {
                 let conn = _env.xns.request_connection_blocking(dc34_api::LED_SERVER).unwrap();
                 if args.len() != 1 {
