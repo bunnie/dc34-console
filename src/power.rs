@@ -18,7 +18,7 @@ const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 4;
 const MOTION_IRQ_MARGIN_MS: u64 = 1000;
 const WFI_IDLE_SEC_INIT: u64 = 60;
 const WFI_MIN_SEC: usize = 5;
-const DEEP_SLEEP_SEC: i64 = 20 * 60; // 20 minutes of low-power light show in deployment
+const DEEP_SLEEP_SEC: i64 = 12 * 60; // 12 minutes of low-power light show in deployment
 
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
@@ -239,6 +239,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
     let mut force_wfi = false;
     let mut force_deep_sleep = false;
     let mut power_off = false;
+    let mut screen_off_requested = false;
 
     let mut last_action_time_ms = tt.elapsed_ms();
     let mut msg_opt = None;
@@ -510,6 +511,14 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                         log::error!("should have gone to deep sleep");
                         // -- Execution should have diverged here - system is off --
                     } else {
+                        if screen_off_requested {
+                            // turn it back on again
+                            screen_off_requested = false;
+                            gfx.set_power(true).ok();
+                            gfx.flip_screen(orientation == Orientation::FaceDown).ok();
+                            kbd.flip_orientation(orientation == Orientation::FaceDown);
+                        }
+
                         // delegating this to here prevents the screen from glitching on
                         // during wakeup due to RTC event
                         if wfi_awaiting_keypress {
@@ -613,6 +622,10 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
             }
             PowerManagerOp::ForceWfi => {
                 force_wfi = true;
+            }
+            PowerManagerOp::ScreenOffRequest => {
+                screen_off_requested = true;
+                gfx.set_power(false).ok();
             }
             PowerManagerOp::Invalid => {
                 log::error!("Invalid power manager operation: {:?}", opcode);
