@@ -18,7 +18,7 @@ const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 4;
 const MOTION_IRQ_MARGIN_MS: u64 = 1000;
 const WFI_IDLE_SEC_INIT: u64 = 60;
 const WFI_MIN_SEC: usize = 5;
-const DEEP_SLEEP_SEC: i64 = 12 * 60; // 12 minutes of low-power light show in deployment
+const DEEP_SLEEP_SEC: i64 = 25 * 60;
 
 fn setup_accel(accel: &mut Lis2dh12, i2c: &mut I2c) -> Result<(), xous::Error> {
     let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
