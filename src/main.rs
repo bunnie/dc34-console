@@ -19,7 +19,7 @@ fn main() {
     // set for nominally 10 seconds to WDT reset - assuming 50 MHz pclk on boot
     // this is "properly" set later on once the system has fully booted and
     // the clock manager is queryable
-    wdt.enable((50_000_000 / 2) * 10, true);
+    wdt.enable((50_000_000 / 2) * 15, true);
 
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);

@@ -231,6 +231,7 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
             }
         }
     }
+    let vault_conn = xns.request_connection_blocking(SERVER_NAME_VAULT2).unwrap();
 
     let mut pwr_mgr_enabled = false;
     let mut booted = false;
@@ -294,6 +295,8 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                 {
                     force_wfi = false; // always reset this here
                     gfx.set_power(false).ok();
+                    // try skip one key press - monkey patch/hack
+                    xous::try_send_message(vault_conn, xous::Message::new_scalar(1026, 0, 0, 0, 0)).ok();
                     wfi_awaiting_keypress = true; // this tells the KeyPress handler we have to turn on the screen
 
                     wdt.disable();
