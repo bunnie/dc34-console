@@ -1,7 +1,6 @@
 // bio.rs - REPL command that receives a BIO program over serial and runs it.
 
 use core::fmt::Write;
-use std::fs::{File, Read, Write};
 use std::io::Read;
 use std::io::Write as FsWrite;
 use std::time::Duration;
@@ -10,7 +9,6 @@ use bao1x_api::bio::*;
 use bao1x_api::bio_resources::*;
 use bao1x_hal::bio::{Bio, CoreCsr};
 use base64::{Engine as _, engine::general_purpose::STANDARD as B64};
-use bytemuck::cast;
 use dc34_api::{DC34_BIO, DC34_BIO_CLK, DC34_BIO_PINS, DC34_DICT};
 use pddb::Pddb;
 
@@ -23,10 +21,9 @@ const CHUNK_INDEX_BYTES: usize = 2;
 const CHUNK_CRC_BYTES: usize = 4;
 /// Total decoded wire size per chunk.
 const CHUNK_WIRE_SIZE: usize = CHUNK_INDEX_BYTES + CHUNK_DATA_SIZE + CHUNK_CRC_BYTES; // 70
-/// 4096 bytes / 64 bytes per chunk = 64 chunks.
-const NUM_CHUNKS: usize = 64;
 /// Size of BIO memory in 32-bit words
-const BIO_MEM_WORDS: usize = 1024;
+const BIO_MEM_BYTES: usize = 0xf00;
+const NUM_CHUNKS: usize = BIO_MEM_BYTES / CHUNK_DATA_SIZE;
 const ALLOWED_PINS: [u8; 4] = [21, 22, 30, 31];
 
 // -- Command state -------------------------------------------------------------
@@ -51,7 +48,7 @@ pub struct BioLoader {
     pin_spec: Vec<u8>,
 
     /// Actual code
-    code: Option<[u32; BIO_MEM_WORDS]>,
+    code: Option<[u8; BIO_MEM_BYTES]>,
 
     pddb: Pddb,
 
@@ -136,12 +133,13 @@ impl BioLoader {
         // release any claimed pins
         let mut io_config = IoConfig::default();
         for pin in &self.pin_spec {
-            self.bio_ss.release_dynamic_pin(*pin, &BioLoader::resource_spec().claimer).unwrap();
+            self.bio_ss.release_dynamic_pin(*pin, &BioLoader::resource_spec().claimer).ok();
             io_config.mapped |= 1 << (*pin as u32);
         }
         if io_config.mapped != 0 {
             io_config.mode = IoConfigMode::ClearOnly;
-            self.bio_ss.setup_io_config(io_config).unwrap();
+            io_config.mapped = !io_config.mapped;
+            self.bio_ss.setup_io_config(io_config).ok();
         }
         // now init a new set of pins
         let mut pin_spec = Vec::<u8>::new();
@@ -151,15 +149,15 @@ impl BioLoader {
             .map_err(|_| "couldn't get PDDB key".to_string())?;
         key.read_to_end(&mut pin_spec).map_err(|_| "couldn't read key".to_string())?;
 
-        let mut code_buf = [0u8; 4096];
+        let mut code_buf = [0u8; 0xf00];
         let mut key = self
             .pddb
-            .get(DC34_DICT, DC34_BIO, None, true, true, Some(4096), None::<fn()>)
+            .get(DC34_DICT, DC34_BIO, None, true, true, Some(0xf00), None::<fn()>)
             .map_err(|_| "couldn't get PDDB key".to_string())?;
         let code_len = key.read(&mut code_buf).map_err(|_| "couldn't read key".to_string())?;
         log::info!("code: {:x?}", &code_buf[..16]);
         let code_found;
-        if code_len > 0 {
+        if code_len > 0 && code_buf.iter().any(|&b| b != 0) {
             log::info!("code loading...");
             if self.core_init {
                 self.bio_ss.de_init_core(self.resource_grant.cores[0]).ok();
@@ -178,7 +176,7 @@ impl BioLoader {
             log::info!("No code to load");
             code_found = false;
         }
-        self.code = Some(cast(code_buf));
+        self.code = Some(code_buf);
 
         check_pins(&mut pin_spec);
         let mut io_config = IoConfig::default();
@@ -194,8 +192,7 @@ impl BioLoader {
         if io_config.mapped != 0 {
             io_config.mode = IoConfigMode::SetOnly;
             log::info!("map pin mask {:x}", io_config.mapped);
-            self.bio_ss.setup_io_config(io_config).unwrap();
-            self.bio_ss.setup_io_config(io_config).unwrap();
+            self.bio_ss.setup_io_config(io_config).ok();
         }
         self.pin_spec = pin_spec;
 
@@ -214,18 +211,15 @@ impl BioLoader {
     /// Return true when every chunk slot is filled.
     pub fn is_complete(&self) -> bool { self.received_count == NUM_CHUNKS }
 
-    /// Assemble all received chunks into a `[u32; 1024]` code chunk.
+    /// Assemble all received chunks into a `[u8; 0xf00]` code chunk.
     /// Panics if `is_complete()` is false - caller should check first.
-    pub fn to_code(&self) -> [u32; BIO_MEM_WORDS] {
+    pub fn to_code(&self) -> [u8; BIO_MEM_BYTES] {
         assert!(self.is_complete(), "code not yet complete");
-        let mut code = [0u32; BIO_MEM_WORDS];
+        let mut code = [0u8; BIO_MEM_BYTES];
         for (chunk_idx, slot) in self.chunks.iter().enumerate() {
             let data = slot.as_ref().unwrap();
-            let word_base = chunk_idx * (CHUNK_DATA_SIZE / 4); // 16 words per chunk
-            for w in 0..(CHUNK_DATA_SIZE / 4) {
-                let o = w * 4;
-                code[word_base + w] = u32::from_le_bytes([data[o], data[o + 1], data[o + 2], data[o + 3]]);
-            }
+            let word_base = chunk_idx * CHUNK_DATA_SIZE;
+            code[word_base..word_base + CHUNK_DATA_SIZE].copy_from_slice(data);
         }
         code
     }
@@ -244,11 +238,10 @@ impl BioLoader {
         {
             let mut code_key = self
                 .pddb
-                .get(DC34_DICT, DC34_BIO, None, true, true, Some(4096), None::<fn()>)
+                .get(DC34_DICT, DC34_BIO, None, true, true, Some(0xf00), None::<fn()>)
                 .expect("couldn't get PDDB key");
-            let words = self.to_code();
-            let bytes: &[u8] = bytemuck::cast_slice(&words);
-            code_key.write_all(bytes).ok();
+            let bytes = self.to_code();
+            code_key.write_all(&bytes).ok();
         }
         self.clear();
         self.pddb.sync().ok();
@@ -279,24 +272,23 @@ impl Drop for BioLoader {
         self.core_init = false;
         let mut io_config = IoConfig::default();
         for pin in &self.pin_spec {
-            self.bio_ss.release_dynamic_pin(*pin, &BioLoader::resource_spec().claimer).unwrap();
+            self.bio_ss.release_dynamic_pin(*pin, &BioLoader::resource_spec().claimer).ok();
             io_config.mapped |= 1 << (*pin as u32);
         }
         if io_config.mapped != 0 {
             io_config.mode = IoConfigMode::ClearOnly;
+            io_config.mapped = !io_config.mapped;
             self.bio_ss.setup_io_config(io_config).unwrap();
         }
         self.bio_ss.release_resources(self.resource_grant.grant_id).unwrap();
     }
 }
 
-fn clear_key(pddb: &Pddb, name: &str) {
-    pddb.delete_key(DC34_DICT, name, None).ok();
-    pddb.sync().ok();
+fn clear_key(pddb: &Pddb, name: &str, len: usize) {
     // regenerate a 0-length entry to work around some fs instability
-    let _key =
-        pddb.get(DC34_DICT, name, None, true, true, None, None::<fn()>).expect("couldn't get PDDB key");
-    pddb.sync().ok();
+    let mut key =
+        pddb.get(DC34_DICT, name, None, true, true, Some(len), None::<fn()>).expect("couldn't get PDDB key");
+    key.write_all(&vec![0u8; len]).unwrap();
 }
 // -- ShellCmdApi implementation ------------------------------------------------
 
@@ -313,9 +305,9 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
 
         if args == "clear" {
             self.clear();
-            clear_key(&self.pddb, DC34_BIO);
-            clear_key(&self.pddb, DC34_BIO_CLK);
-            clear_key(&self.pddb, DC34_BIO_PINS);
+            clear_key(&self.pddb, DC34_BIO, 0xf00);
+            clear_key(&self.pddb, DC34_BIO_CLK, 4);
+            clear_key(&self.pddb, DC34_BIO_PINS, 4);
             self.pddb.sync().ok();
 
             for &core in self.resource_grant.cores.iter() {
@@ -324,13 +316,15 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
             self.core_init = false;
             let mut io_config = IoConfig::default();
             for pin in &self.pin_spec {
-                self.bio_ss.release_dynamic_pin(*pin, &BioLoader::resource_spec().claimer).unwrap();
+                self.bio_ss.release_dynamic_pin(*pin, &BioLoader::resource_spec().claimer).ok();
                 io_config.mapped |= 1 << (*pin as u32);
             }
             if io_config.mapped != 0 {
                 io_config.mode = IoConfigMode::ClearOnly;
+                io_config.mapped = !io_config.mapped;
                 self.bio_ss.setup_io_config(io_config).unwrap();
             }
+            self.pin_spec = vec![];
             // don't release this - we still "own" it just in case we get new code uploaded
             // self.bio_ss.release_resources(self.resource_grant.grant_id).unwrap();
 
@@ -434,7 +428,7 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
         if args == "pad" {
             // Zero-fill every slot not yet received, then commit.
             // This allows the host to send only the chunks that carry real data
-            // and let the device pad the remainder of the 4096-byte buffer.
+            // and let the device pad the remainder of the 0xf00-byte buffer.
 
             for slot in self.chunks.iter_mut() {
                 if slot.is_none() {
