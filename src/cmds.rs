@@ -80,6 +80,8 @@ mod test;
 use test::*;
 mod image;
 use image::*;
+mod bio;
+use bio::*;
 
 pub struct CmdEnv {
     common_env: CommonEnv,
@@ -87,6 +89,7 @@ pub struct CmdEnv {
     ///// 2. declare storage for your command here.
     image: Image,
     test: Test,
+    bio: BioLoader,
 }
 impl CmdEnv {
     pub fn new(xns: &xous_names::XousNames) -> CmdEnv {
@@ -105,6 +108,7 @@ impl CmdEnv {
             ///// 3. initialize your storage, by calling new()
             image: Image::new(),
             test: Test::new(),
+            bio: BioLoader::new(),
         }
     }
 
@@ -124,6 +128,7 @@ impl CmdEnv {
             &mut ver_cmd,
             &mut self.test,
             &mut self.image,
+            &mut self.bio,
         ];
 
         if let Some(cmdline) = maybe_cmdline {

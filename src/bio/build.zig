@@ -16,6 +16,13 @@ pub fn build(b: *std.Build) void {
         "Stop after emitting .s; do not run clang2rustasm.py",
     ) orelse false;
 
+    // -Demit-binary=true: also assemble the post-errata .s into a flat .bin
+    const emit_binary = b.option(
+        bool,
+        "emit-binary",
+        "Also assemble the errata-patched output into a flat binary (<module>/<module>.bin)",
+    ) orelse false;
+
     const main_c_path = b.pathJoin(&.{ module_name, "main.c" });
 
     // -- Step 1: emit assembly ----------------------------------------
@@ -70,6 +77,13 @@ pub fn build(b: *std.Build) void {
         module_name,
     });
     py_cmd.has_side_effects = true;
+    if (emit_binary) {
+        py_cmd.addArgs(&.{
+            "--emit-binary",
+            "--zig-exe",
+            b.graph.zig_exe,
+        });
+    }
     py_cmd.step.dependOn(&install_dis.step);
 
     // -- Default step: full pipeline or asm-only ----------------------
