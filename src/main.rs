@@ -16,10 +16,10 @@ mod power;
 fn main() {
     // first thing: initialize the WDT
     let mut wdt = bao1x_hal::wdt::Wdt::new();
-    // set for nominally 10 seconds to WDT reset - assuming 50 MHz pclk on boot
+    // set for nominally 20 seconds to WDT reset - assuming 50 MHz pclk on boot
     // this is "properly" set later on once the system has fully booted and
     // the clock manager is queryable
-    wdt.enable((50_000_000 / 2) * 15, true);
+    wdt.enable((50_000_000 / 2) * 20, true);
 
     log_server::init_wait().unwrap();
     log::set_max_level(log::LevelFilter::Info);

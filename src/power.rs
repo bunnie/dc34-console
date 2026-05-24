@@ -12,7 +12,7 @@ use dc34_api::*;
 use num_traits::ToPrimitive;
 
 const POWER_POLL_INTERVAL_MS: usize = 2500;
-const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 4;
+const WDT_FEED_INTERVAL_MS: usize = POWER_POLL_INTERVAL_MS * 5;
 // this gives some margin for the keypress to "catch up" in case both motion and
 // keypress interrupts are simultaneously fired as a wakeup event
 const MOTION_IRQ_MARGIN_MS: u64 = 1000;
