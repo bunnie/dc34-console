@@ -81,7 +81,7 @@ impl BioLoader {
         let xns = xous_names::XousNames::new().unwrap();
         // this is used to indicate BIO activity on the UI
         let vault_conn = xns.request_connection_blocking("_Vault2_").unwrap();
-        pddb.try_mount();
+        pddb.is_mounted_blocking();
 
         let mut loader = BioLoader {
             chunks: vec![None; NUM_CHUNKS],
@@ -114,7 +114,12 @@ impl BioLoader {
                 .pddb
                 .get(DC34_DICT, DC34_BIO_CLK, None, true, true, Some(4), None::<fn()>)
                 .map_err(|_| "couldn't get PDDB key".to_string())?;
-            let clk_len = key.read(&mut clk_buf).map_err(|_| "couldn't read key".to_string())?;
+            let attrs = key.attributes().map_err(|e| format!("couldn't get pins attrs: {:?}", e))?;
+            let clk_len = if attrs.len > 0 {
+                key.read(&mut clk_buf).map_err(|_| "couldn't read key".to_string())?
+            } else {
+                0
+            };
             self.target_freq = 350_000_000;
             if clk_len == 4 {
                 let target_freq = u32::from_le_bytes(clk_buf);
@@ -147,14 +152,22 @@ impl BioLoader {
             .pddb
             .get(DC34_DICT, DC34_BIO_PINS, None, true, true, Some(4), None::<fn()>)
             .map_err(|_| "couldn't get PDDB key".to_string())?;
-        key.read_to_end(&mut pin_spec).map_err(|_| "couldn't read key".to_string())?;
+        let attrs = key.attributes().map_err(|e| format!("couldn't get pins attrs: {:?}", e))?;
+        if attrs.len > 0 {
+            key.read(&mut pin_spec).map_err(|_| "couldn't read key".to_string())?;
+        }
 
         let mut code_buf = [0u8; 0xf00];
         let mut key = self
             .pddb
             .get(DC34_DICT, DC34_BIO, None, true, true, Some(0xf00), None::<fn()>)
             .map_err(|_| "couldn't get PDDB key".to_string())?;
-        let code_len = key.read(&mut code_buf).map_err(|_| "couldn't read key".to_string())?;
+        let attrs = key.attributes().map_err(|e| format!("couldn't get code attrs: {:?}", e))?;
+        let code_len = if attrs.len > 0 {
+            key.read(&mut code_buf).map_err(|_| "couldn't read key".to_string())?
+        } else {
+            0
+        };
         log::info!("code: {:x?}", &code_buf[..16]);
         let code_found;
         if code_len > 0 && code_buf.iter().any(|&b| b != 0) {
