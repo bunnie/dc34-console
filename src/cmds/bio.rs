@@ -68,7 +68,7 @@ impl BioLoader {
         pddb.is_mounted_blocking();
 
         // this now happens fairly late in the init due to the gate above
-        let bio_ss = Bio::new();
+        let mut bio_ss = Bio::new();
         // claim core resource and initialize it
         let resource_grant =
             bio_ss.claim_resources(&Self::resource_spec()).expect("Couldn't claim BIO resources");
@@ -81,6 +81,27 @@ impl BioLoader {
             .expect("Didn't get FIFO3 handle")
             .expect("Didn't get FIFO3 handle");
         let fifo = CoreCsr::from_handle(&fifo_handle);
+
+        bio_ss
+            .setup_fifo_event_triggers(FifoEventConfig {
+                which: Fifo::Fifo3,
+                trigger_slot: TriggerSlot::new_with_raw_value(1),
+                level: FifoLevel::new_with_raw_value(1),
+                trigger_less_than: false,
+                trigger_greater_than: true,
+                trigger_equal_to: true,
+            })
+            .expect("couldn't set FIFO trigger configuration");
+        bio_ss
+            .setup_fifo_event_triggers(FifoEventConfig {
+                which: Fifo::Fifo3,
+                trigger_slot: TriggerSlot::new_with_raw_value(0),
+                level: FifoLevel::new_with_raw_value(0),
+                trigger_less_than: false,
+                trigger_greater_than: false,
+                trigger_equal_to: true,
+            })
+            .expect("couldn't set FIFO trigger configuration");
 
         let xns = xous_names::XousNames::new().unwrap();
         // this is used to indicate BIO activity on the UI
