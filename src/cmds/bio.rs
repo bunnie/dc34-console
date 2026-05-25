@@ -63,13 +63,17 @@ pub struct BioLoader {
 
 impl BioLoader {
     pub fn new() -> Self {
-        let bio_ss = Bio::new();
         let pddb = Pddb::new();
+        // this will block until the Vault calls mount
+        pddb.is_mounted_blocking();
+
+        // this now happens fairly late in the init due to the gate above
+        let bio_ss = Bio::new();
         // claim core resource and initialize it
         let resource_grant =
             bio_ss.claim_resources(&Self::resource_spec()).expect("Couldn't claim BIO resources");
 
-        log::info!("using core: {:?}", resource_grant.cores[0]);
+        log::info!("BIO loader reserving core: {:?}", resource_grant.cores[0]);
 
         // safety: fifo is stored in this object so they aren't Drop'd before the object is
         // destroyed
@@ -81,7 +85,6 @@ impl BioLoader {
         let xns = xous_names::XousNames::new().unwrap();
         // this is used to indicate BIO activity on the UI
         let vault_conn = xns.request_connection_blocking("_Vault2_").unwrap();
-        pddb.is_mounted_blocking();
 
         let mut loader = BioLoader {
             chunks: vec![None; NUM_CHUNKS],
@@ -101,7 +104,7 @@ impl BioLoader {
             Err(s) => {
                 log::error!("Couldn't setup BIO: {:?}", s)
             }
-            _ => log::info!("BIO setup from stored config!"),
+            _ => (),
         }
 
         loader
@@ -121,7 +124,7 @@ impl BioLoader {
                 0
             };
             self.target_freq = 350_000_000;
-            if clk_len == 4 {
+            if clk_len == 4 && clk_buf != [0u8; 4] {
                 let target_freq = u32::from_le_bytes(clk_buf);
                 log::info!("target_freq {}", target_freq);
                 if target_freq > 0 && target_freq <= 350_000_000 {
@@ -163,15 +166,16 @@ impl BioLoader {
             .get(DC34_DICT, DC34_BIO, None, true, true, Some(0xf00), None::<fn()>)
             .map_err(|_| "couldn't get PDDB key".to_string())?;
         let attrs = key.attributes().map_err(|e| format!("couldn't get code attrs: {:?}", e))?;
+        // attrs.len check works around PDDB bug which seems to only trigger on this key
+        // TODO: fix the PDDB bug.
         let code_len = if attrs.len > 0 {
             key.read(&mut code_buf).map_err(|_| "couldn't read key".to_string())?
         } else {
             0
         };
-        log::info!("code: {:x?}", &code_buf[..16]);
         let code_found;
         if code_len > 0 && code_buf.iter().any(|&b| b != 0) {
-            log::info!("code loading...");
+            log::info!("code: {:x?}", &code_buf[..16]);
             if self.core_init {
                 self.bio_ss.de_init_core(self.resource_grant.cores[0]).ok();
                 self.core_init = false;
@@ -194,7 +198,7 @@ impl BioLoader {
         check_pins(&mut pin_spec);
         let mut io_config = IoConfig::default();
         for pin in &pin_spec {
-            log::info!("claiming pin {}", *pin);
+            log::info!("Claiming pin {}", *pin);
             // claim pin resource - this only claims the resource, it does not configure it
             self.bio_ss
                 .claim_dynamic_pin(*pin, &BioLoader::resource_spec().claimer)
@@ -204,7 +208,7 @@ impl BioLoader {
         }
         if io_config.mapped != 0 {
             io_config.mode = IoConfigMode::SetOnly;
-            log::info!("map pin mask {:x}", io_config.mapped);
+            log::info!("Map pin mask {:x}", io_config.mapped);
             self.bio_ss.setup_io_config(io_config).ok();
         }
         self.pin_spec = pin_spec;
@@ -212,7 +216,7 @@ impl BioLoader {
         if code_found {
             log::info!("Set core to run {:?}", self.resource_grant);
             self.bio_ss.set_core_run_state(&self.resource_grant, true);
-            // indicate loading to the UI
+            // indicate loading to the UI - activates "BIO ACTIVE" notice on the idle screen
             xous::send_message(self.vault_conn, xous::Message::new_scalar(1027, 1, 0, 0, 0)).ok();
         } else {
             log::info!("Set core to halt {:?}", self.resource_grant);
@@ -237,7 +241,7 @@ impl BioLoader {
         code
     }
 
-    /// Reset all state
+    /// Reset all state in the holding buffer (not to be confused with clearing the PDDB stored data)
     pub fn clear(&mut self) {
         for slot in self.chunks.iter_mut() {
             *slot = None;
@@ -247,7 +251,7 @@ impl BioLoader {
 
     /// Persist the assembled code to PDDB, clear in-memory state, and signal
     /// a reload. Called both from the normal last-chunk path and from `pad`.
-    fn commit(&mut self, env: &mut CommonEnv) -> &'static str {
+    fn commit(&mut self) -> &'static str {
         {
             let mut code_key = self
                 .pddb
@@ -256,11 +260,8 @@ impl BioLoader {
             let bytes = self.to_code();
             code_key.write_all(&bytes).ok();
         }
-        self.clear();
+        self.clear(); // clears the holding buffer for incoming code
         self.pddb.sync().ok();
-        // trigger a reload using monkey-patched opcode
-        let conn = env.xns.request_connection_blocking("_Vault2_").unwrap();
-        xous::send_message(conn, xous::Message::new_scalar(1024, 1, 0, 0, 0)).ok();
         "SUCCESS"
     }
 }
@@ -298,7 +299,9 @@ impl Drop for BioLoader {
 }
 
 fn clear_key(pddb: &Pddb, name: &str, len: usize) {
-    // regenerate a 0-length entry to work around some fs instability
+    // There's a PDDB bug that makes the PDDB unstable with deleting and then remaking
+    // keys over and over again. This is a work-around that just writes an all-0 value
+    // over the existing key.
     let mut key =
         pddb.get(DC34_DICT, name, None, true, true, Some(len), None::<fn()>).expect("couldn't get PDDB key");
     key.write_all(&vec![0u8; len]).unwrap();
@@ -342,6 +345,7 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
             // self.bio_ss.release_resources(self.resource_grant.grant_id).unwrap();
 
             write!(ret, "CLEAR").unwrap();
+            // monkey patch to reset the light pattern and remove the "BIO ACTIVE" notice
             let conn = _env.xns.request_connection_blocking("_Vault2_").unwrap();
             xous::send_message(conn, xous::Message::new_scalar(1027, 0, 0, 0, 0)).ok();
             return Ok(Some(ret));
@@ -451,7 +455,7 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
                 }
             }
 
-            write!(ret, "{}", self.commit(_env)).unwrap();
+            write!(ret, "{}", self.commit()).unwrap();
 
             return Ok(Some(ret));
         }
@@ -506,7 +510,7 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
 
         // -- Reply -------------------------------------------------------------
         if self.is_complete() {
-            write!(ret, "{}", self.commit(_env)).unwrap();
+            write!(ret, "{}", self.commit()).unwrap();
         } else {
             write!(ret, "OK").unwrap();
         }

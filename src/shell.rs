@@ -28,13 +28,14 @@ fn shell() {
     let shch_sid = xns.register_name(SERVER_NAME_SHELLCHAT, None).expect("can't register server");
 
     let kbd = keyboard::Keyboard::new(&xns).unwrap();
-    kbd.register_listener(SERVER_NAME_SHELLCHAT, ConsoleOp::Keypress.to_u32().unwrap() as usize);
 
     let mut repl = crate::repl::Repl::new(&xns);
     let mut update_repl = false;
     let mut was_callback = false;
     let mut history_index: isize = 0;
 
+    // register this late because the REPL can take a while to init as it depends on the PDDB.
+    kbd.register_listener(SERVER_NAME_SHELLCHAT, ConsoleOp::Keypress.to_u32().unwrap() as usize);
     let mut input = String::new();
     loop {
         let msg = xous::receive_message(shch_sid).unwrap();
