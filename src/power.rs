@@ -112,6 +112,21 @@ fn accel_enable_int(accel: &mut Lis2dh12, i2c: &mut I2c, enable: bool) -> Result
     Ok(())
 }
 
+fn accel_pause_int(accel: &mut Lis2dh12, i2c: &mut I2c, pause: bool) -> Result<(), xous::Error> {
+    // Clear any pending interrupts on both engines
+    let _ = accel.read_register(i2c, regs::INT1_SRC)?;
+    let _ = accel.read_register(i2c, regs::INT2_SRC)?;
+    let saved_ctrl3 = accel.read_register(i2c, regs::CTRL_REG3)?;
+    log::debug!("pause accel irq");
+    if pause {
+        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 & !(0x40 | 0x20))?;
+    } else {
+        accel.write_register(i2c, regs::INT2_CFG, 0x7F)?; // re-arm all faces, we're awake and want to get orientation
+        accel.write_register(i2c, regs::CTRL_REG3, saved_ctrl3 | 0x20)?;
+    }
+    Ok(())
+}
+
 pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>, wdt: usize) -> ! {
     // safety: this is "moved" from the original outer location where the WDT is accessed to set up
     // an early trigger into this loop, and thus all the safety conditions are met.
@@ -313,6 +328,18 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                     last_action_time_ms = now_ms;
                     // screen wake-up is delegated to KeyPress handler -
                     // this prevents the screen glitch on RTC wake event
+                }
+            }
+            PowerManagerOp::PauseAccel => {
+                if let Some(scalar) = msg_opt.as_mut().unwrap().body.scalar_message_mut() {
+                    let pause = scalar.arg1 != 0;
+                    if let Some(a) = &mut accel {
+                        if pause {
+                            accel_pause_int(a, &mut i2c, true).ok();
+                        } else {
+                            accel_pause_int(a, &mut i2c, false).unwrap();
+                        }
+                    }
                 }
             }
             PowerManagerOp::MotionIrq => {
