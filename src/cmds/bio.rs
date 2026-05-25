@@ -121,12 +121,12 @@ impl BioLoader {
             let clk_len = if attrs.len > 0 {
                 key.read(&mut clk_buf).map_err(|_| "couldn't read key".to_string())?
             } else {
+                log::info!("No clock spec");
                 0
             };
             self.target_freq = 350_000_000;
             if clk_len == 4 && clk_buf != [0u8; 4] {
                 let target_freq = u32::from_le_bytes(clk_buf);
-                log::info!("target_freq {}", target_freq);
                 if target_freq > 0 && target_freq <= 350_000_000 {
                     log::info!("target_freq {}", target_freq);
                     self.target_freq = target_freq;
@@ -150,7 +150,7 @@ impl BioLoader {
             self.bio_ss.setup_io_config(io_config).ok();
         }
         // now init a new set of pins
-        let mut pin_spec = Vec::<u8>::new();
+        let mut pin_spec = vec![0u8, 0u8, 0u8, 0u8];
         let mut key = self
             .pddb
             .get(DC34_DICT, DC34_BIO_PINS, None, true, true, Some(4), None::<fn()>)
@@ -158,6 +158,9 @@ impl BioLoader {
         let attrs = key.attributes().map_err(|e| format!("couldn't get pins attrs: {:?}", e))?;
         if attrs.len > 0 {
             key.read(&mut pin_spec).map_err(|_| "couldn't read key".to_string())?;
+            log::info!("Read pin spec {:?}", pin_spec);
+        } else {
+            log::info!("No pin spec");
         }
 
         let mut code_buf = [0u8; 0xf00];
@@ -196,6 +199,7 @@ impl BioLoader {
         self.code = Some(code_buf);
 
         check_pins(&mut pin_spec);
+        log::info!("Finalized pin spec {:?}", pin_spec);
         let mut io_config = IoConfig::default();
         for pin in &pin_spec {
             log::info!("Claiming pin {}", *pin);
@@ -355,16 +359,6 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
             let arg_list: Vec<&str> = args.split_whitespace().collect();
             let mut pins = Vec::<u8>::new();
             if arg_list.len() >= 2 {
-                {
-                    // clear the pin record in PDDB
-                    let mut pin_key = self
-                        .pddb
-                        .get(DC34_DICT, DC34_BIO_PINS, None, true, true, Some(4), None::<fn()>)
-                        .expect("couldn't get PDDB key");
-                    // hack to clear the record - there's a bug in the PDDB dealing with data truncation on
-                    // writes
-                    pin_key.write_all(&[0, 0, 0, 0]).ok();
-                }
                 for pin_str in &arg_list[1..] {
                     if let Ok(pin) = u8::from_str_radix(pin_str, 10) {
                         pins.push(pin);
@@ -372,11 +366,17 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
                 }
                 check_pins(&mut pins);
                 {
+                    let mut pin_list = [0u8; 4];
+                    for (i, p) in pins.iter().enumerate() {
+                        pin_list[i] = *p;
+                    }
                     let mut pin_key = self
                         .pddb
                         .get(DC34_DICT, DC34_BIO_PINS, None, true, true, Some(4), None::<fn()>)
                         .expect("couldn't get PDDB key");
-                    pin_key.write_all(&pins).ok();
+                    pin_key.write_all(&pin_list).ok();
+                    log::info!("Set pin spec of {:x?}", pin_list);
+                    self.pddb.sync().ok();
                 }
             }
             write!(ret, "OK").unwrap();
@@ -416,7 +416,7 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
             }
         }
 
-        if args.starts_with("dbg") {
+        if args.starts_with("rx") {
             self.bio_ss.debug(self.resource_grant.cores[0]);
             let arg_list: Vec<&str> = args.split_whitespace().collect();
             let iters =
@@ -439,6 +439,46 @@ impl<'a> ShellCmdApi<'a> for BioLoader {
                 log::info!("{:x?}", dat);
             }
             write!(ret, "OK").unwrap();
+            return Ok(Some(ret));
+        }
+
+        if args.starts_with("tx") {
+            let arg_list: Vec<&str> = args.split_whitespace().collect();
+            if arg_list.len() >= 2 {
+                let s = arg_list[1].trim();
+                let val = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+                    u32::from_str_radix(hex, 16).map_err(|e| e.to_string())
+                } else {
+                    s.parse::<u32>().map_err(|e| e.to_string())
+                };
+                let iters =
+                    if arg_list.len() == 3 { usize::from_str_radix(arg_list[2], 10).unwrap_or(1) } else { 1 };
+                let mut timeout = false;
+                if let Ok(val) = val {
+                    for _ in 0..iters {
+                        let start = std::time::Instant::now();
+                        while self.fifo.csr.rf(utralib::utra::bio_bdma::SFR_FLEVEL_PCLK_REGFIFO_LEVEL3) > 7 {
+                            // don't overflow the fifo
+                            // wait for entry
+                            if std::time::Instant::now().duration_since(start) > Duration::from_secs(5) {
+                                log::info!("timeout");
+                                timeout = true;
+                                break;
+                            }
+                        }
+                        if timeout {
+                            break;
+                        }
+                        self.fifo.csr.wo(utralib::utra::bio_bdma::SFR_TXF3, val);
+                        log::info!("{:x?}", val);
+                    }
+                    write!(ret, "OK").unwrap();
+                } else {
+                    write!(ret, "ERR bad argument").unwrap();
+                }
+            } else {
+                write!(ret, "ERR tx <val> [repeat]").unwrap();
+            }
             return Ok(Some(ret));
         }
 
