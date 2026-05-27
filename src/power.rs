@@ -4,7 +4,7 @@ use std::sync::{
 };
 
 use bao1x_api::{IoIrq, IoxHal, IoxValue};
-use bao1x_hal::lis2dh12::{Lis2dh12, Orientation, regs};
+use bao1x_hal::lis2dh12::{InterruptSource, Lis2dh12, Orientation, regs};
 use bao1x_hal::{axp2101::VbusIrq, clocks::ClockOp, i2c::I2c};
 use bao1x_hal_service::Rtc;
 use chrono::Utc;
@@ -411,8 +411,16 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
                     */
 
                     // must read to clear any pending interrupt
-                    let int1_src = a.read_int1_source(&mut i2c).unwrap();
-                    let int2_src_raw = a.read_register(&mut i2c, regs::INT2_SRC).unwrap();
+                    let int1_src = match a.read_int1_source(&mut i2c) {
+                        Ok(i) => i,
+                        // on error, retry, and if still an error force handling
+                        Err(_) => a.read_int1_source(&mut i2c).unwrap_or(InterruptSource::from(0x40u8)),
+                    };
+                    let int2_src_raw = match a.read_register(&mut i2c, regs::INT2_SRC) {
+                        Ok(i) => i,
+                        // on error, retry, and if still an error force handling
+                        Err(_) => a.read_register(&mut i2c, regs::INT2_SRC).unwrap_or(0x40u8),
+                    };
 
                     if int1_src.active {
                         log::debug!("motion");
