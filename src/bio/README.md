@@ -4,6 +4,10 @@
 
 `zig build -Dmodule=<program>` or `python3 -m ziglang build "-Dmodule=<program>"`, depending on your zig install method
 
+If you need the .bin (for use with `dc34-bio`) run
+
+`python3 -m ziglang build "-Dmodule=<program>" "-Demit-binary=true"`
+
 ## Details
 
 #### Installing Zig
