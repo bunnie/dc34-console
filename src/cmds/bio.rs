@@ -67,6 +67,26 @@ impl BioLoader {
         // this will block until the Vault calls mount
         pddb.is_mounted_blocking();
 
+        #[cfg(feature = "factory-only")]
+        {
+            // this auto-runs on boot for this image
+            use std::io::Write;
+
+            use dc34_api::{BadgeType, DC34_BADGE, DC34_TOUR};
+            let pddb = pddb::Pddb::new();
+            log::info!("Resetting state...");
+            let mut key = pddb
+                .get(DC34_DICT, DC34_TOUR, None, true, true, Some(1), None::<fn()>)
+                .expect("couldn't get PDDB key");
+            key.write(&[0]).ok();
+            let mut badge_key = pddb
+                .get(DC34_DICT, DC34_BADGE, None, true, true, Some(1), None::<fn()>)
+                .expect("couldn't get PDDB key");
+            badge_key.write(&[BadgeType::None as u8]).ok();
+            pddb.sync().ok();
+            log::info!("...done!");
+        }
+
         // this now happens fairly late in the init due to the gate above
         let mut bio_ss = Bio::new();
         // claim core resource and initialize it

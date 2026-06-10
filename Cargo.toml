@@ -116,6 +116,8 @@ misc-test = []
 qa-test = []
 # this flag leaks secrets
 hazardous-test = []
+# this flag is for factory only builds
+factory-only = []
 
 # Activating this makes this crate *try* to grab the DUART. To improve its odds
 # of winning the race, shift its position to first in the list in the PIDs to be
