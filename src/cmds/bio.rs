@@ -67,24 +67,52 @@ impl BioLoader {
         // this will block until the Vault calls mount
         pddb.is_mounted_blocking();
 
-        #[cfg(feature = "factory-only")]
+        #[cfg(feature = "factory-mismatch")]
         {
-            // this auto-runs on boot for this image
             use std::io::Write;
 
-            use dc34_api::{BadgeType, DC34_BADGE, DC34_TOUR};
-            let pddb = pddb::Pddb::new();
-            log::info!("Resetting state...");
-            let mut key = pddb
-                .get(DC34_DICT, DC34_TOUR, None, true, true, Some(1), None::<fn()>)
-                .expect("couldn't get PDDB key");
-            key.write(&[0]).ok();
-            let mut badge_key = pddb
-                .get(DC34_DICT, DC34_BADGE, None, true, true, Some(1), None::<fn()>)
-                .expect("couldn't get PDDB key");
-            badge_key.write(&[BadgeType::None as u8]).ok();
-            pddb.sync().ok();
-            log::info!("...done!");
+            use dc34_api::{BadgeType, DC34_BADGE, DC34_TOUR, FACTORY_ONE_WAY};
+
+            let xns = xous_names::XousNames::new().unwrap();
+            let keystore = keystore::Keystore::new(&xns);
+            if keystore.get_owc(FACTORY_ONE_WAY).unwrap_or(1) == 0 {
+                let pddb = pddb::Pddb::new();
+                log::info!("Resetting state...");
+                let mut key = pddb
+                    .get(DC34_DICT, DC34_TOUR, None, true, true, Some(1), None::<fn()>)
+                    .expect("couldn't get PDDB key");
+                key.write(&[0]).ok();
+                let mut badge_key = pddb
+                    .get(DC34_DICT, DC34_BADGE, None, true, true, Some(1), None::<fn()>)
+                    .expect("couldn't get PDDB key");
+                badge_key.write(&[BadgeType::None as u8]).ok();
+                pddb.sync().ok();
+                log::info!("...done!");
+                // safety: FACTORY_ONE_WAY is checked to be at the correct offset
+                unsafe {
+                    keystore.inc_owc(FACTORY_ONE_WAY).ok();
+                }
+                log::info!("Further factory ops disabled.");
+            }
+        }
+
+        #[cfg(feature = "factory-wipe")]
+        {
+            use dc34_api::FACTORY_ONE_WAY;
+
+            let xns = xous_names::XousNames::new().unwrap();
+            let keystore = keystore::Keystore::new(&xns);
+            if keystore.get_owc(FACTORY_ONE_WAY).unwrap_or(1) == 0 {
+                let pddb = pddb::Pddb::new();
+                pddb.delete_dict(DC34_DICT, None).ok();
+                pddb.sync_cleanup().ok();
+                log::info!("...done!");
+                // safety: FACTORY_ONE_WAY is checked to be at the correct offset
+                unsafe {
+                    keystore.inc_owc(FACTORY_ONE_WAY).ok();
+                }
+                log::info!("Further factory ops disabled.");
+            }
         }
 
         // this now happens fairly late in the init due to the gate above

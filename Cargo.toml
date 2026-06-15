@@ -116,8 +116,11 @@ misc-test = []
 qa-test = []
 # this flag leaks secrets
 hazardous-test = []
-# this flag is for factory only builds
-factory-only = []
+
+# these flags are for factory only builds
+# owc-inc is necessary because we use a OWC to disable the factory cheat routine after run-once.
+factory-mismatch = ["keystore/owc-inc"]
+factory-wipe = ["keystore/owc-inc"]
 
 # Activating this makes this crate *try* to grab the DUART. To improve its odds
 # of winning the race, shift its position to first in the list in the PIDs to be
