@@ -11,8 +11,13 @@ fn leds() {
 
     let sid = xns.register_name(dc34_api::LED_SERVER, None).unwrap();
 
+    #[cfg(not(feature = "uber"))]
+    const LED_COUNT: u8 = 10;
+    #[cfg(feature = "uber")]
+    const LED_COUNT: u8 = 18;
+
     let mut lightgenes =
-        crate::bio::lightgenes::Lightgenes::new(arbitrary_int::u5::new(15), 10, None).unwrap();
+        crate::bio::lightgenes::Lightgenes::new(arbitrary_int::u5::new(15), LED_COUNT, None).unwrap();
 
     let mut rate_param: u8 = 1;
     let mut msg_opt = None;
