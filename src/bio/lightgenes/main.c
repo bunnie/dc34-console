@@ -8,6 +8,8 @@
 #define QUANTUM_NS     150    // assumed quantum interval in nanoseconds
 #define QUANTUM_PER_MS 6670   // quantum to wait per millisecond delay
 
+#define UBER
+
 /* ------------------------------------------------------------------ */
 /*  Configuration                                                     */
 /* ------------------------------------------------------------------ */
@@ -56,7 +58,11 @@ static uint32_t loop_state = 0;
 static uint32_t time_ms = 0;
 static genome diploid;
 static uint32_t reftime_lg = 0;
+#ifdef UBER
+static uint8_t shift = 3;
+#else
 static uint8_t shift = 5;  // overall dimming for power savings
+#endif
 static uint8_t shift_eyes = 3; // less shift for the eyes as they are dimmer
 static uint32_t jack_eyes = 0; // whether or not to flash the jack's eyes
 
@@ -363,6 +369,10 @@ static void do_lightgene(uint32_t actual_leds) {
     }
   }
 
+#ifdef UBER
+    ledSetRGB(fb, 0, eye_left.r, eye_left.g, eye_left.b, shift_eyes);
+    ledSetRGB(fb, 1, eye_right.r, eye_right.g, eye_right.b, shift_eyes);
+#else
   // make sure the "eyes" are off in this mode to save power
   if (jack_eyes == 0) {
     ledSetRGB(fb, 0, 0, 0, 0, shift);
@@ -371,6 +381,7 @@ static void do_lightgene(uint32_t actual_leds) {
     ledSetRGB(fb, 0, eye_left.r, eye_left.g, eye_left.b, shift_eyes);
     ledSetRGB(fb, 1, eye_right.r, eye_right.g, eye_right.b, shift_eyes);
   }
+#endif
 }
 
 void test_pattern(uint32_t actual_leds) {
