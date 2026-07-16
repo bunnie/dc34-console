@@ -8,7 +8,10 @@
 #define QUANTUM_NS     150    // assumed quantum interval in nanoseconds
 #define QUANTUM_PER_MS 6670   // quantum to wait per millisecond delay
 
-#define UBER
+// Only define for UBER builds
+// Don't forget to re-run `python3 -m ziglang build "-Dmodule=lightgenes"` inside src/bio
+// after uncommenting this so that the C files are turned into .rs artifacts.
+// #define UBER
 
 /* ------------------------------------------------------------------ */
 /*  Configuration                                                     */
