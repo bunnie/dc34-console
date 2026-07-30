@@ -671,6 +671,9 @@ pub fn power_manager(run_led_fade: Arc<AtomicBool>, plugged_in: Arc<AtomicBool>,
             PowerManagerOp::Invalid => {
                 log::error!("Invalid power manager operation: {:?}", opcode);
             }
+            PowerManagerOp::FeedWdt => {
+                wdt.feed();
+            }
             PowerManagerOp::PowerOff => {
                 power_off = true;
                 std::thread::spawn(move || {
