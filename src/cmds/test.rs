@@ -384,6 +384,7 @@ impl<'a> ShellCmdApi<'a> for Test {
             // test cases:
             //   - JN1JoLLZdw2uR5FNxci8V5SHKZcaZ/Vv8TUGaCukIVFXu6Zi
             //   - R4uPrdM4ZlKxgvQprePOQnlqxhRShMDu8QlCwwTDqcFSKdhk
+            #[cfg(feature = "hazardous-test")]
             "k0" => {
                 use base64::{Engine as _, engine::general_purpose};
                 if args.len() == 1 {
@@ -543,6 +544,7 @@ impl<'a> ShellCmdApi<'a> for Test {
                 )
                 .ok();
             }
+            #[cfg(feature = "hazardous-test")]
             "jig" => {
                 let conn = _env.xns.request_connection_blocking("_Vault2_").unwrap();
                 xous::send_message(conn, xous::Message::new_scalar(1025, 0, 0, 0, 0)).ok();
